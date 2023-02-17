@@ -31,3 +31,7 @@ func TextInFromHTTP(addr string, routePath string, textInChan chan<- *TextIn) {
 	})
 	r.Run(addr)
 }
+
+func init() {
+	gin.SetMode(gin.ReleaseMode)
+}

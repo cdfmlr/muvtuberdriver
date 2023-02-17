@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"reflect"
 	"time"
 
@@ -32,20 +33,20 @@ const (
 // The "data" field of the message is []any.
 type textMessageData struct {
 	AvatarUrl         string
-	Timestamp         int
+	Timestamp         int64
 	AuthorName        string
-	AuthorType        int
+	AuthorType        int64
 	Content           string
-	PrivilegeType     int
+	PrivilegeType     int64
 	IsGiftDanmaku     bool
-	AuthorLevel       int
+	AuthorLevel       int64
 	IsNewbie          bool
 	IsMobileVerified  bool
-	MedalLevel        int
+	MedalLevel        int64
 	Id                string
 	Translation       string
-	ContentType       int
-	ContentTypeParams []string
+	ContentType       int64
+	ContentTypeParams []any // []string 
 }
 
 // textMessageDataFromArray converts a []any to a TextMessageData.
@@ -61,6 +62,15 @@ func textMessageDataFromArray(data []interface{}) (*textMessageData, error) {
 		f := tv.Field(i)
 
 		v := reflect.ValueOf(data[i])
+
+		// special case: convert float64 to int64
+		if v.Kind() == reflect.Float64 {
+			v = reflect.ValueOf(int64(data[i].(float64)))
+		}
+		if f.Kind() == reflect.Bool && v.Kind() == reflect.Int64 {
+			v = reflect.ValueOf(v.Interface() != 0)
+		}
+
 		if f.Kind() != v.Kind() {
 			return nil, fmt.Errorf("data has incorrect type of field %d, want %s, got %s", i, f.Kind(), v.Kind())
 		}
@@ -80,7 +90,7 @@ const (
 // Configurable variables (default values for BlivedmClientOptions)
 var (
 	BlivedmServer   = "ws://localhost:12450/api/chat"
-	BlivedmWsOrigin = "http://localhost/"
+	BlivedmWsOrigin = "http://localhost:12450"
 	RecvMsgChanBuf  = 100
 )
 
@@ -89,7 +99,7 @@ func blivedmJoinRoomMessage(roomid int) string {
 	msg := blivedmMessage{
 		Cmd: blivedmCmdJoinRoom,
 		Data: map[string]any{
-			"roomid": roomid,
+			"roomId": roomid,
 		},
 	}
 
@@ -105,6 +115,9 @@ func blivedmJoinRoomMessage(roomid int) string {
 // Blocks until websocket connection is closed.
 func chatClient(ws *websocket.Conn, recvMsgCh chan<- string) {
 	heartbeat := time.NewTicker(blivedmHeartbeatInterval)
+	defer heartbeat.Stop()
+
+	log.Println("chat client started")
 
 LOOP:
 	for {
@@ -140,6 +153,7 @@ func newBlivedmClient(roomid int, opts ...BlivedmClientOption) (recvMsgCh <-chan
 
 	ws, err := websocket.Dial(o.BlivedmServer, "", o.BlivedmWsOrigin)
 	if err != nil {
+		log.Println("websocket dial error:", err)
 		return nil, err
 	}
 
@@ -225,7 +239,7 @@ func textMessageHandler(message *blivedmMessage) (*TextIn, error) {
 		return nil, err
 	}
 
-	fmt.Println(tmd)
+	// fmt.Println(tmd)
 
 	textIn := &TextIn{
 		Author:  tmd.AuthorName,
@@ -237,7 +251,8 @@ func textMessageHandler(message *blivedmMessage) (*TextIn, error) {
 
 // TextInFromDm 从 roomid 的直播间接收弹幕消息，发送到 textIn。
 func TextInFromDm(roomid int, textIn chan<- *TextIn, opts ...BlivedmClientOption) (err error) {
-	recvMsgCh, err := newBlivedmClient(1, opts...)
+	log.Printf("start receiving text from room %d", roomid)
+	recvMsgCh, err := newBlivedmClient(roomid, opts...)
 	if err != nil {
 		return err
 	}

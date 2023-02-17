@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 )
 
@@ -15,7 +16,7 @@ func TextOutFromChatbot(chatbot Chatbot, textInChan <-chan *TextIn, textOutChan 
 		textIn := <-textInChan
 		textOut, err := chatbot.Chat(textIn)
 		if err != nil {
-			panic(err)
+			log.Printf("chatbot.Chat(%v) failed: %v", textIn, err)
 		}
 		textOutChan <- textOut
 	}
@@ -43,7 +44,7 @@ func (m *MusharingChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var respBody struct {
 		ChatbotResp string `json:"chatbot_resp"`
 	}
