@@ -77,7 +77,7 @@ const (
 	blivedmHeartbeatInterval = 10 * time.Second
 )
 
-// Configurable variables
+// Configurable variables (default values for BlivedmClientOptions)
 var (
 	BlivedmServer   = "ws://localhost:12450/api/chat"
 	BlivedmWsOrigin = "http://localhost/"
@@ -128,13 +128,22 @@ LOOP:
 
 // newBlivedmClient creates a new websocket connection to blivedm server,
 // joins the room and returns a channel for receiving messages.
-func newBlivedmClient(roomid int) (recvMsgCh <-chan string, err error) {
-	ws, err := websocket.Dial(BlivedmServer, "", BlivedmWsOrigin)
+func newBlivedmClient(roomid int, opts ...BlivedmClientOption) (recvMsgCh <-chan string, err error) {
+	o := blivedmClientOptions{
+		BlivedmServer:   BlivedmServer,
+		BlivedmWsOrigin: BlivedmWsOrigin,
+		RecvMsgChanBuf:  RecvMsgChanBuf,
+	}
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	ws, err := websocket.Dial(o.BlivedmServer, "", o.BlivedmWsOrigin)
 	if err != nil {
 		return nil, err
 	}
 
-	ch := make(chan string, RecvMsgChanBuf)
+	ch := make(chan string, o.RecvMsgChanBuf)
 	if err = websocket.Message.Send(ws, blivedmJoinRoomMessage(roomid)); err != nil {
 		return nil, err
 	}
@@ -142,6 +151,32 @@ func newBlivedmClient(roomid int) (recvMsgCh <-chan string, err error) {
 	go chatClient(ws, ch)
 
 	return ch, nil
+}
+
+type blivedmClientOptions struct {
+	BlivedmServer   string
+	BlivedmWsOrigin string
+	RecvMsgChanBuf  int
+}
+
+type BlivedmClientOption func(*blivedmClientOptions)
+
+func WithBlivedmServer(s string) BlivedmClientOption {
+	return func(o *blivedmClientOptions) {
+		o.BlivedmServer = s
+	}
+}
+
+func WithBlivedmWsOrigin(s string) BlivedmClientOption {
+	return func(o *blivedmClientOptions) {
+		o.BlivedmWsOrigin = s
+	}
+}
+
+func WithRecvMsgChanBuf(n int) BlivedmClientOption {
+	return func(o *blivedmClientOptions) {
+		o.RecvMsgChanBuf = n
+	}
 }
 
 // deprecated
@@ -201,8 +236,8 @@ func textMessageHandler(message *blivedmMessage) (*TextIn, error) {
 }
 
 // TextInFromDm 从 roomid 的直播间接收弹幕消息，发送到 textIn。
-func TextInFromDm(roomid int, textIn chan<- *TextIn) (err error) {
-	recvMsgCh, err := newBlivedmClient(1)
+func TextInFromDm(roomid int, textIn chan<- *TextIn, opts ...BlivedmClientOption) (err error) {
+	recvMsgCh, err := newBlivedmClient(1, opts...)
 	if err != nil {
 		return err
 	}
