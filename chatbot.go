@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 )
@@ -42,8 +43,16 @@ func (m *MusharingChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 	if err != nil {
 		return nil, err
 	}
+	
+	var respBody struct {
+		ChatbotResp string `json:"chatbot_resp"`
+	}
+	err = json.Unmarshal(body, &respBody)
+	if err != nil {
+		return nil, err
+	}
 
-	r := TextOut(body)
+	r := TextOut(respBody.ChatbotResp)
 	return &r, nil
 }
 
