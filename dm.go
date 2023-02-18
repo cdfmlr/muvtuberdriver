@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/mitchellh/mapstructure"
 	"golang.org/x/net/websocket"
 )
 
@@ -79,6 +80,16 @@ func textMessageDataFromArray(data []interface{}) (*textMessageData, error) {
 	}
 
 	return t, nil
+}
+
+type superChatMessageData struct {
+	Id          string `json:"id"`
+	AvatarUrl   string `json:"avatarUrl"`
+	Timestamp   int64  `json:"timestamp"`
+	AuthorName  string `json:"authorName"`
+	Price       int64  `json:"price"`
+	Content     string `json:"content"`
+	Translation string `json:"translation"`
 }
 
 // heartbeating
@@ -229,10 +240,12 @@ func unmarshalMessage(msg string) (*blivedmMessage, error) {
 	return &message, nil
 }
 
+var ErrDataNotArray = errors.New("data is not an array")
+
 func textMessageHandler(message *blivedmMessage) (*TextIn, error) {
 	data, ok := message.Data.([]any)
 	if !ok {
-		return nil, errors.New("data is not an array")
+		return nil, ErrDataNotArray
 	}
 	tmd, err := textMessageDataFromArray(data)
 	if err != nil {
@@ -245,6 +258,25 @@ func textMessageHandler(message *blivedmMessage) (*TextIn, error) {
 		Author:   tmd.AuthorName,
 		Content:  tmd.Content,
 		Priority: PriorityLow,
+	}
+
+	return textIn, nil
+}
+
+func superChatMessageHandler(message *blivedmMessage) (*TextIn, error) {
+	data, ok := message.Data.(map[string]any)
+	if !ok {
+		return nil, errors.New("data is not an map")
+	}
+	var sc superChatMessageData
+	if err := mapstructure.Decode(data, &sc); err != nil {
+		return nil, err
+	}
+
+	textIn := &TextIn{
+		Author:   sc.AuthorName,
+		Content:  sc.Content,
+		Priority: Priority(sc.Price / 10),
 	}
 
 	return textIn, nil
@@ -266,13 +298,21 @@ func TextInFromDm(roomid int, textIn chan<- *TextIn, opts ...BlivedmClientOption
 		}
 
 		switch message.Cmd {
-		case blivedmCmdAddText, blivedmCmdAddSuperChat:
+		case blivedmCmdAddText:
 			t, err := textMessageHandler(message)
 			if err != nil {
 				fmt.Printf("textMessageHandler(%s) error: %v\n", msg, err)
 				continue
 			}
 			log.Printf("TextInFromDm: %s", t.Content)
+			textIn <- t
+		case blivedmCmdAddSuperChat:
+			t, err := superChatMessageHandler(message)
+			if err != nil {
+				fmt.Printf("superChatMessageHandler(%s) error: %v\n", msg, err)
+				continue
+			}
+			log.Printf("TextInFromDm [SC]: %s", t.Content)
 			textIn <- t
 		}
 	}
