@@ -20,7 +20,10 @@ func TextInFromHTTP(addr string, routePath string, textInChan chan<- *TextIn) {
 		routePath = "/"
 	}
 
-	r := gin.Default()
+	// no logger
+	r := gin.New()
+	r.Use(gin.Recovery())
+
 	r.POST(routePath, func(c *gin.Context) {
 		var textIn TextIn
 		if err := c.BindJSON(&textIn); err != nil {

@@ -198,7 +198,12 @@ func (p *PrioritizedChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 
 		textOut, err := chatbot.Chat(textIn)
 		if err != nil {
-			return nil, err
+			if i == 0 {
+				return nil, err
+			} else {
+				log.Printf("%v.Chat(%v) failed: %v, try next chatbot", chatbot, textIn, err)
+				continue
+			}
 		}
 		if textOut != nil {
 			return textOut, nil

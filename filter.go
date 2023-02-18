@@ -153,11 +153,31 @@ func (f *PriorityReduceFilter) maxContentLengthInTemp() (maxLen int, index int) 
 }
 
 func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *Text) {
+	f.mu.RLock()
+	switch len(f.temp) {
+	case 0:
+		f.mu.RUnlock()
+		return
+	case 1:
+		t := f.temp[0]
+		f.mu.RUnlock()
+
+		f.mu.Lock()
+		f.temp = f.temp[:0]
+		f.mu.Unlock()
+		
+		t.Priority = PriorityHighest  // 消息少，提权，以求高质量 Chatbot 回复
+		log.Printf("PriorityReduceFilter outputMaxPriorityOnes: %+v", t)
+		chOut <- t
+		return
+	}
+	
+
 	maxPriority := f.maxPriorityInTemp()
 
 	choosen := make([]*Text, 1)
 
-	f.mu.Lock()
+	f.mu.RLock()
 	for _, t := range f.temp {
 		if t.Priority == maxPriority {
 			if t.Priority > PriorityHighest {
@@ -166,7 +186,7 @@ func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *Text) {
 			choosen = append(choosen, t)
 		}
 	}
-	f.mu.Unlock()
+	f.mu.RUnlock()
 
 	if maxPriority == PriorityHighest {
 		// 如果这些消息的 Priority >= PriorityHighest 则输出所有这些消息；
