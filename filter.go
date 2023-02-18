@@ -108,7 +108,9 @@ func (f *PriorityReduceFilter) filter(chIn chan *Text) (chOut chan *Text) {
 		for {
 			select {
 			case in := <-chIn:
+				f.mu.Lock()
 				f.temp = append(f.temp, in)
+				f.mu.Unlock()
 			case <-timeout.C:
 				f.outputMaxPriorityOnes(chOut)
 
@@ -153,25 +155,26 @@ func (f *PriorityReduceFilter) maxContentLengthInTemp() (maxLen int, index int) 
 }
 
 func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *Text) {
-	f.mu.RLock()
-	switch len(f.temp) {
-	case 0:
-		f.mu.RUnlock()
-		return
-	case 1:
-		t := f.temp[0]
-		f.mu.RUnlock()
+	// f.mu.RLock()
+	// switch len(f.temp) {
+	// case 0:
+	// 	f.mu.RUnlock()
+	// 	return
+	// case 1:
+	// 	t := f.temp[0]
+	// 	f.mu.RUnlock()
 
-		f.mu.Lock()
-		f.temp = f.temp[:0]
-		f.mu.Unlock()
+	// 	f.mu.Lock()
+	// 	f.temp = f.temp[:0]
+	// 	f.mu.Unlock()
 		
-		t.Priority = PriorityHighest  // 消息少，提权，以求高质量 Chatbot 回复
-		log.Printf("PriorityReduceFilter outputMaxPriorityOnes: %+v", t)
-		chOut <- t
-		return
-	}
-	
+	// 	t.Priority = PriorityHighest  // 消息少，提权，以求高质量 Chatbot 回复
+	// 	log.Printf("PriorityReduceFilter outputMaxPriorityOnes: %+v", t)
+	// 	chOut <- t
+	// 	return
+	// default:
+	// 	f.mu.RUnlock()
+	// }
 
 	maxPriority := f.maxPriorityInTemp()
 

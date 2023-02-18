@@ -35,12 +35,13 @@ func main() {
 	// in -> chatbot -> out
 	chatbot := NewPrioritizedChatbot(map[Priority]Chatbot{
 		PriorityLow:  NewMusharingChatbot(*musharingChatbotAddr),
-		PriorityHigh: NewChatGPTChatbot(*chatgptAddr, *chatgptAccessToken, *chatgptPrompt),
+		// PriorityHigh: NewChatGPTChatbot(*chatgptAddr, *chatgptAccessToken, *chatgptPrompt),
 	})
 	go TextOutFromChatbot(chatbot, textInFiltered, textOutChan)
 
 	// out -> filter -> out
-	textOutFiltered := ChineseFilter4TextOut.FilterTextOut(textOutChan)
+	textOutFiltered := textOutChan
+	// textOutFiltered := ChineseFilter4TextOut.FilterTextOut(textOutChan)
 	textOutFiltered = NewPriorityReduceFilter(*reduceDuration).FilterTextOut(textOutFiltered)
 
 	// out -> (live2d) & (say) & (stdout)

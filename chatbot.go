@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 )
 
 type Chatbot interface {
@@ -34,7 +35,7 @@ type MusharingChatbot struct {
 func (m *MusharingChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 	// curl '127.0.0.1:5000/chatbot/get_response?chat=是的'
 
-	t := textIn.Content
+	t := url.QueryEscape(textIn.Content)
 
 	resp, err := m.client.Get(m.Server + "/chatbot/get_response?chat=" + t)
 	if err != nil {
@@ -188,6 +189,8 @@ func (p *PrioritizedChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 	if textIn == nil {
 		return nil, nil
 	}
+	log.Printf("[PrioritizedChatbot] Chat(%s): %s", textIn.Author, textIn.Content)
+
 	priority := textIn.Priority
 
 	for i := priority; i >= 0; i-- {
@@ -206,6 +209,7 @@ func (p *PrioritizedChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 			}
 		}
 		if textOut != nil {
+			log.Printf("[PrioritizedChatbot] Chat(%s): %s => (%s): %s", textIn.Author, textIn.Content, textOut.Author, textOut.Content)
 			return textOut, nil
 		}
 	}

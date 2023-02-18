@@ -1,8 +1,11 @@
 package main
 
 import (
+	"errors"
+	"log"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 type Sayer interface {
@@ -47,7 +50,7 @@ func WithAudioDevice(audioDevice string) SayerOption {
 	}
 }
 
-func (s *sayer) Say(text string) error {
+func (s *sayer) say(text string) error {
 	// say -v voice -r rate -a audioDevice text
 
 	text = strings.TrimSpace(text)
@@ -69,4 +72,21 @@ func (s *sayer) Say(text string) error {
 	args = append(args, text)
 
 	return exec.Command("say", args...).Run()
+}
+
+func (s *sayer) Say(text string) error {
+	timeout := 15 * time.Second
+	ch := make(chan error, 1)
+
+	go func() {
+		ch <- s.say(text)
+	}()
+
+	select {
+	case err := <-ch:
+		return err
+	case <-time.After(timeout):
+		log.Print("say: timeout")
+		return errors.New("say: timeout")
+	}
 }
