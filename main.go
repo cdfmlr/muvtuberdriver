@@ -11,6 +11,9 @@ var (
 	live2dDriverAddr     = flag.String("live2ddrv", "http://localhost:9004/driver", "live2d driver address")
 	musharingChatbotAddr = flag.String("mchatbot", "http://localhost:8080", "musharing chatbot api server address")
 	textInHttpAddr       = flag.String("textinhttp", ":9010", "textIn http server address")
+	chatgptAddr          = flag.String("chatgpt", "http://localhost:9006", "chatgpt api server address")
+	chatgptAccessToken   = flag.String("chatgpt_access_token", "", "chatgpt access token")
+	chatgptPrompt        = flag.String("chatgpt_prompt", "", "chatgpt prompt")
 )
 
 func main() {
@@ -27,7 +30,8 @@ func main() {
 	textInFiltered := ChineseFilter4TextIn.FilterTextIn(textInChan)
 
 	// in -> chatbot -> out
-	chatbot := NewMusharingChatbot(*musharingChatbotAddr)
+	// chatbot := NewMusharingChatbot(*musharingChatbotAddr)
+	chatbot := NewChatGPTChatbot(*chatgptAddr, *chatgptAccessToken, *chatgptPrompt)
 	go TextOutFromChatbot(chatbot, textInFiltered, textOutChan)
 
 	// out -> filter -> out
@@ -43,7 +47,7 @@ func main() {
 			continue
 		}
 
-		fmt.Println(textOut)
+		fmt.Println(*textOut)
 		live2d.TextOutToLive2DDriver(textOut)
 		sayer.Say(*textOut)
 	}
