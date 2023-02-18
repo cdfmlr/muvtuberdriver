@@ -49,6 +49,6 @@ func main() {
 
 		fmt.Println(*textOut)
 		live2d.TextOutToLive2DDriver(textOut)
-		sayer.Say(*textOut)
+		sayer.Say(textOut.Content)
 	}
 }

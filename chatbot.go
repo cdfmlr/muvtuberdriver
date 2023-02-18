@@ -55,7 +55,10 @@ func (m *MusharingChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 		return nil, err
 	}
 
-	r := TextOut(respBody.ChatbotResp)
+	r := TextOut{
+		Author: "MusharingChatbot",
+		Content: respBody.ChatbotResp,
+	}
 	return &r, nil
 }
 
@@ -86,7 +89,10 @@ func (c *ChatGPTChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 		return nil, err
 	}
 
-	textOut := TextOut(resp)
+	textOut := TextOut {
+		Author: "ChatGPTChatbot",
+		Content: resp,
+	}
 
 	return &textOut, nil
 }

@@ -29,7 +29,7 @@ func (l *live2dDriver) TextOutToLive2DDriver(textOut *TextOut) error {
 	}
 
 	resp, err := l.client.Post(l.Server, "text/plain",
-		bytes.NewReader([]byte(*textOut)))
+		bytes.NewReader([]byte(textOut.Content)))
 	if err != nil {
 		return err
 	}

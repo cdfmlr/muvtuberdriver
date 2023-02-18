@@ -33,6 +33,9 @@ func filterTextChan[T any](chIn chan T, f TextFilterFunc, key func(T) string) (c
 
 func (f TextFilterFunc) FilterTextIn(chIn chan *TextIn) (chOut chan *TextIn) {
 	return filterTextChan(chIn, f, func(textIn *TextIn) string {
+		if textIn == nil {
+			return ""
+		}
 		return textIn.Content
 	})
 }
@@ -42,7 +45,7 @@ func (f TextFilterFunc) FilterTextOut(chIn chan *TextOut) (chOut chan *TextOut) 
 		if textOut == nil {
 			return ""
 		}
-		return string(*textOut)
+		return textOut.Content
 	})
 }
 
