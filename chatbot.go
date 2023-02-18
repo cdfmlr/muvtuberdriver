@@ -58,6 +58,7 @@ func (m *MusharingChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 	r := TextOut{
 		Author: "MusharingChatbot",
 		Content: respBody.ChatbotResp,
+		Priority: textIn.Priority,
 	}
 	return &r, nil
 }
@@ -92,6 +93,7 @@ func (c *ChatGPTChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 	textOut := TextOut {
 		Author: "ChatGPTChatbot",
 		Content: resp,
+		Priority: textIn.Priority,
 	}
 
 	return &textOut, nil
@@ -171,3 +173,45 @@ func NewChatGPTChatbot(server string, accessToken string, prompt string) Chatbot
 }
 
 // endregion ChatGPTChatbot
+
+
+// region PrioritizedChatbot
+
+// PrioritizedChatbot 按照 TextIn 的 Priority 调用 Chatbot。
+// 高优先级的 Chatbot 应该是对话质量更高的（例如 ChatGPTChatbot），而低优先级的 Chatbot 用来保底。
+// 如果没有对应级别的 Chatbot，会往下滑到更低的级别。
+type PrioritizedChatbot struct {
+	chatbots map[Priority]Chatbot
+}
+
+func (p *PrioritizedChatbot) Chat(textIn *TextIn) (*TextOut, error) {
+	if textIn == nil {
+		return nil, nil
+	}
+	priority := textIn.Priority
+
+	for i := priority; i >= 0; i-- {
+		chatbot, ok := p.chatbots[i]
+		if !ok {
+			continue
+		}
+
+		textOut, err := chatbot.Chat(textIn)
+		if err != nil {
+			return nil, err
+		}
+		if textOut != nil {
+			return textOut, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func NewPrioritizedChatbot(chatbots map[Priority]Chatbot) Chatbot {
+	return &PrioritizedChatbot{
+		chatbots: chatbots,
+	}
+}
+
+// endregion PrioritizedChatbot

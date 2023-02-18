@@ -46,7 +46,7 @@ type textMessageData struct {
 	Id                string
 	Translation       string
 	ContentType       int64
-	ContentTypeParams []any // []string 
+	ContentTypeParams []any // []string
 }
 
 // textMessageDataFromArray converts a []any to a TextMessageData.
@@ -242,8 +242,9 @@ func textMessageHandler(message *blivedmMessage) (*TextIn, error) {
 	// fmt.Println(tmd)
 
 	textIn := &TextIn{
-		Author:  tmd.AuthorName,
-		Content: tmd.Content,
+		Author:   tmd.AuthorName,
+		Content:  tmd.Content,
+		Priority: PriorityLow,
 	}
 
 	return textIn, nil
@@ -271,6 +272,7 @@ func TextInFromDm(roomid int, textIn chan<- *TextIn, opts ...BlivedmClientOption
 				fmt.Printf("textMessageHandler(%s) error: %v\n", msg, err)
 				continue
 			}
+			log.Printf("TextInFromDm: %s", t.Content)
 			textIn <- t
 		}
 	}

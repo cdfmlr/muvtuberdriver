@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"strings"
+	"sync"
+	"time"
 	"unicode"
 )
 
@@ -61,13 +63,142 @@ func chineseFilter(text string) bool {
 	text = strings.TrimSpace(text)
 	for _, c := range text {
 		if unicode.Is(unicode.Han, c) {
-			log.Printf("chineseFilter true: %s", text)
+			// log.Printf("chineseFilter true: %s", text)
 			return true
 		}
 	}
-	log.Printf("chineseFilter false: %s", text)
+	// log.Printf("chineseFilter false: %s", text)
 	return false
 }
 
 var ChineseFilter4TextIn TextInFilter = TextFilterFunc(chineseFilter)
 var ChineseFilter4TextOut TextOutFilter = TextFilterFunc(chineseFilter)
+
+// PriorityReduceFilter 每 duration 的时间，从收到的消息中选出一些作为输出。
+//
+// 选择的标准是 Priority 最高的。如果最高 Priority 有多条：
+// 1. 如果这些消息的 Priority 为 PriorityHighest 则输出所有这些消息；
+// 2. 否则，输出其中 Content 字数最多的一条；
+type PriorityReduceFilter struct {
+	temp     []*TextIn
+	mu       sync.RWMutex
+	duration time.Duration
+}
+
+func NewPriorityReduceFilter(duration time.Duration) *PriorityReduceFilter {
+	return &PriorityReduceFilter{
+		temp:     make([]*TextIn, 0, 10),
+		duration: duration,
+	}
+}
+
+func (f *PriorityReduceFilter) FilterTextIn(chIn chan *TextIn) (chOut chan *TextIn) {
+	return f.filter(chIn)
+}
+
+func (f *PriorityReduceFilter) FilterTextOut(chIn chan *TextOut) (chOut chan *TextOut) {
+	return f.filter(chIn)
+}
+
+func (f *PriorityReduceFilter) filter(chIn chan *Text) (chOut chan *Text) {
+	chOut = make(chan *TextOut, RecvMsgChanBuf)
+	go func() {
+		timeout := time.NewTicker(f.duration)
+
+		for {
+			select {
+			case in := <-chIn:
+				f.temp = append(f.temp, in)
+			case <-timeout.C:
+				f.outputMaxPriorityOnes(chOut)
+
+				f.mu.Lock()
+				f.temp = f.temp[:0]
+				f.mu.Unlock()
+			}
+		}
+	}()
+
+	return chOut
+}
+
+// selectOneInTemp 找出 temp 中最高的 Priority 。
+func (f *PriorityReduceFilter) maxPriorityInTemp() Priority {
+	var max Priority
+
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	for _, t := range f.temp {
+		if t.Priority >= max {
+			max = t.Priority
+		}
+	}
+	return max
+}
+
+func (f *PriorityReduceFilter) maxContentLengthInTemp() (maxLen int, index int) {
+	var max, idx int
+
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	for i, t := range f.temp {
+		if len(t.Content) > max {
+			max = len(t.Content)
+			idx = i
+		}
+	}
+	return max, idx
+}
+
+func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *Text) {
+	maxPriority := f.maxPriorityInTemp()
+
+	choosen := make([]*Text, 1)
+
+	f.mu.Lock()
+	for _, t := range f.temp {
+		if t.Priority == maxPriority {
+			if t.Priority > PriorityHighest {
+				t.Priority = PriorityHighest // write
+			}
+			choosen = append(choosen, t)
+		}
+	}
+	f.mu.Unlock()
+
+	if maxPriority == PriorityHighest {
+		// 如果这些消息的 Priority >= PriorityHighest 则输出所有这些消息；
+		for _, t := range choosen {
+			log.Printf("PriorityReduceFilter outputMaxPriorityOnes: %+v", t)
+			chOut <- t
+		}
+	} else {
+		// 否则，输出其中 Content 字数最多的一条；
+		maxLen, maxLenIdx := maxLenOfTextInSlice(choosen)
+		if maxLen <= 0 {
+			return
+		}
+
+		one := choosen[maxLenIdx]
+		log.Printf("PriorityReduceFilter outputMaxPriorityOnes: %+v", one)
+		chOut <- one
+	}
+}
+
+func maxLenOfTextInSlice(slice []*Text) (maxLen int, index int) {
+	if len(slice) == 0 {
+		return 0, 0
+	}
+	for i, t := range slice {
+		if t == nil {
+			continue
+		}
+		if len(t.Content) > maxLen {
+			maxLen = len(t.Content)
+			index = i
+		}
+	}
+	return maxLen, index
+}

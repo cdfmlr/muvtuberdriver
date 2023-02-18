@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 	"strings"
 
@@ -26,6 +27,7 @@ func TextInFromHTTP(addr string, routePath string, textInChan chan<- *TextIn) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+		log.Printf("TextInFromHTTP: %+v", textIn)
 		textInChan <- &textIn
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})

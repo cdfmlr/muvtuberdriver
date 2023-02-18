@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"time"
 )
 
 var (
@@ -14,6 +15,7 @@ var (
 	chatgptAddr          = flag.String("chatgpt", "http://localhost:9006", "chatgpt api server address")
 	chatgptAccessToken   = flag.String("chatgpt_access_token", "", "chatgpt access token")
 	chatgptPrompt        = flag.String("chatgpt_prompt", "", "chatgpt prompt")
+	reduceDuration       = flag.Duration("reduce_duration", 2*time.Second, "reduce duration")
 )
 
 func main() {
@@ -28,14 +30,18 @@ func main() {
 
 	// in -> filter -> in
 	textInFiltered := ChineseFilter4TextIn.FilterTextIn(textInChan)
+	textInFiltered = NewPriorityReduceFilter(*reduceDuration).FilterTextIn(textInFiltered)
 
 	// in -> chatbot -> out
-	// chatbot := NewMusharingChatbot(*musharingChatbotAddr)
-	chatbot := NewChatGPTChatbot(*chatgptAddr, *chatgptAccessToken, *chatgptPrompt)
+	chatbot := NewPrioritizedChatbot(map[Priority]Chatbot{
+		PriorityLow:  NewMusharingChatbot(*musharingChatbotAddr),
+		PriorityHigh: NewChatGPTChatbot(*chatgptAddr, *chatgptAccessToken, *chatgptPrompt),
+	})
 	go TextOutFromChatbot(chatbot, textInFiltered, textOutChan)
 
 	// out -> filter -> out
 	textOutFiltered := ChineseFilter4TextOut.FilterTextOut(textOutChan)
+	textOutFiltered = NewPriorityReduceFilter(*reduceDuration).FilterTextOut(textOutFiltered)
 
 	// out -> (live2d) & (say) & (stdout)
 	live2d := NewLive2DDriver(*live2dDriverAddr)
