@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sync/atomic"
+	"time"
 )
 
 type Chatbot interface {
@@ -57,8 +59,8 @@ func (m *MusharingChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 	}
 
 	r := TextOut{
-		Author: "MusharingChatbot",
-		Content: respBody.ChatbotResp,
+		Author:   "MusharingChatbot",
+		Content:  respBody.ChatbotResp,
 		Priority: textIn.Priority,
 	}
 	return &r, nil
@@ -73,16 +75,47 @@ func NewMusharingChatbot(server string) Chatbot {
 
 // endregion MusharingChatbot
 
+type Cooldown struct {
+	coolingdown atomic.Bool
+	Interval    time.Duration
+}
+
+var DefaultCooldownInterval = time.Second * 60
+
+func (c *Cooldown) accessWithCooldown() bool {
+	if c.Interval == 0 {
+		log.Printf("cooldown interval missing, use default: %v", DefaultCooldownInterval)
+		c.Interval = DefaultCooldownInterval
+	}
+
+	if c.coolingdown.Load() {
+		return false
+	}
+
+	c.coolingdown.Store(true)
+	go func() {
+		time.Sleep(c.Interval)
+		c.coolingdown.Store(false)
+	}()
+
+	return true
+}
+
 // region ChatGPTChatbot
 
 // TODO
 type ChatGPTChatbot struct {
 	Server string
 	client *http.Client
+	Cooldown
 }
 
 func (c *ChatGPTChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 	// curl -X POST localhost:9006/ask -d '{"prompt": "你好"}'
+
+	if !c.Cooldown.accessWithCooldown() {
+		return nil, errors.New("ChatGPTChatbot is cooling down")
+	}
 
 	log.Printf("[ChatGPTChatbot] Chat(%s): %s", textIn.Author, textIn.Content)
 
@@ -91,11 +124,13 @@ func (c *ChatGPTChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 		return nil, err
 	}
 
-	textOut := TextOut {
-		Author: "ChatGPTChatbot",
-		Content: resp,
+	textOut := TextOut{
+		Author:   "ChatGPTChatbot",
+		Content:  resp,
 		Priority: textIn.Priority,
 	}
+
+	log.Printf("[ChatGPTChatbot] done: Chat(%s): %s", textOut.Author, textOut.Content)
 
 	return &textOut, nil
 }
@@ -175,7 +210,6 @@ func NewChatGPTChatbot(server string, accessToken string, prompt string) Chatbot
 
 // endregion ChatGPTChatbot
 
-
 // region PrioritizedChatbot
 
 // PrioritizedChatbot 按照 TextIn 的 Priority 调用 Chatbot。
@@ -202,9 +236,10 @@ func (p *PrioritizedChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 		textOut, err := chatbot.Chat(textIn)
 		if err != nil {
 			if i == 0 {
+				log.Printf("PrioritizedChatbot all Chatbots failed: %v, return nil", err)
 				return nil, err
 			} else {
-				log.Printf("%v.Chat(%v) failed: %v, try next chatbot", chatbot, textIn, err)
+				log.Printf("%T.Chat(%v) failed: %v, try next chatbot", chatbot, textIn, err)
 				continue
 			}
 		}

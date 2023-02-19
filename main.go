@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -35,7 +36,7 @@ func main() {
 	// in -> chatbot -> out
 	chatbot := NewPrioritizedChatbot(map[Priority]Chatbot{
 		PriorityLow:  NewMusharingChatbot(*musharingChatbotAddr),
-		// PriorityHigh: NewChatGPTChatbot(*chatgptAddr, *chatgptAccessToken, *chatgptPrompt),
+		PriorityHigh: NewChatGPTChatbot(*chatgptAddr, *chatgptAccessToken, *chatgptPrompt),
 	})
 	go TextOutFromChatbot(chatbot, textInFiltered, textOutChan)
 
