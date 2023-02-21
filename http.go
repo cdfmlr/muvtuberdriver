@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"muvtuberdriver/model"
 	"net/http"
 	"strings"
 
@@ -15,7 +16,7 @@ import (
 //	{ "author": "author", "content": "content" }
 //
 // routePath is the path of the route, default is "/".
-func TextInFromHTTP(addr string, routePath string, textInChan chan<- *TextIn) {
+func TextInFromHTTP(addr string, routePath string, textInChan chan<- *model.TextIn) {
 	if strings.TrimSpace(routePath) == "" {
 		routePath = "/"
 	}
@@ -25,7 +26,7 @@ func TextInFromHTTP(addr string, routePath string, textInChan chan<- *TextIn) {
 	r.Use(gin.Recovery())
 
 	r.POST(routePath, func(c *gin.Context) {
-		var textIn TextIn
+		var textIn model.TextIn
 		if err := c.BindJSON(&textIn); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return

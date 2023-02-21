@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"muvtuberdriver/model"
 	"reflect"
 	"time"
 
@@ -242,7 +243,7 @@ func unmarshalMessage(msg string) (*blivedmMessage, error) {
 
 var ErrDataNotArray = errors.New("data is not an array")
 
-func textMessageHandler(message *blivedmMessage) (*TextIn, error) {
+func textMessageHandler(message *blivedmMessage) (*model.TextIn, error) {
 	data, ok := message.Data.([]any)
 	if !ok {
 		return nil, ErrDataNotArray
@@ -254,16 +255,16 @@ func textMessageHandler(message *blivedmMessage) (*TextIn, error) {
 
 	// fmt.Println(tmd)
 
-	textIn := &TextIn{
+	textIn := &model.TextIn{
 		Author:   tmd.AuthorName,
 		Content:  tmd.Content,
-		Priority: PriorityLow,
+		Priority: model.PriorityLow,
 	}
 
 	return textIn, nil
 }
 
-func superChatMessageHandler(message *blivedmMessage) (*TextIn, error) {
+func superChatMessageHandler(message *blivedmMessage) (*model.TextIn, error) {
 	data, ok := message.Data.(map[string]any)
 	if !ok {
 		return nil, errors.New("data is not an map")
@@ -273,17 +274,17 @@ func superChatMessageHandler(message *blivedmMessage) (*TextIn, error) {
 		return nil, err
 	}
 
-	textIn := &TextIn{
+	textIn := &model.TextIn{
 		Author:   sc.AuthorName,
 		Content:  sc.Content,
-		Priority: Priority(sc.Price / 10),
+		Priority: model.Priority(sc.Price / 10),
 	}
 
 	return textIn, nil
 }
 
 // TextInFromDm 从 roomid 的直播间接收弹幕消息，发送到 textIn。
-func TextInFromDm(roomid int, textIn chan<- *TextIn, opts ...BlivedmClientOption) (err error) {
+func TextInFromDm(roomid int, textIn chan<- *model.TextIn, opts ...BlivedmClientOption) (err error) {
 	log.Printf("start receiving text from room %d", roomid)
 	recvMsgCh, err := newBlivedmClient(roomid, opts...)
 	if err != nil {

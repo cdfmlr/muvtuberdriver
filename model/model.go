@@ -1,4 +1,4 @@
-package main
+package model
 
 type Text struct {
 	Author   string   `json:"author"`

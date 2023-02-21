@@ -1,4 +1,4 @@
-package main
+package chatbot
 
 import (
 	"bytes"
@@ -6,17 +6,17 @@ import (
 	"errors"
 	"io"
 	"log"
+	"muvtuberdriver/model"
 	"net/http"
-	"net/url"
 	"sync/atomic"
 	"time"
 )
 
 type Chatbot interface {
-	Chat(textIn *TextIn) (*TextOut, error)
+	Chat(textIn *model.TextIn) (*model.TextOut, error)
 }
 
-func TextOutFromChatbot(chatbot Chatbot, textInChan <-chan *TextIn, textOutChan chan<- *TextOut) {
+func TextOutFromChatbot(chatbot Chatbot, textInChan <-chan *model.TextIn, textOutChan chan<- *model.TextOut) {
 	for {
 		textIn := <-textInChan
 		textOut, err := chatbot.Chat(textIn)
@@ -26,54 +26,6 @@ func TextOutFromChatbot(chatbot Chatbot, textInChan <-chan *TextIn, textOutChan 
 		textOutChan <- textOut
 	}
 }
-
-// region MusharingChatbot
-
-type MusharingChatbot struct {
-	Server string
-	client *http.Client
-}
-
-func (m *MusharingChatbot) Chat(textIn *TextIn) (*TextOut, error) {
-	// curl '127.0.0.1:5000/chatbot/get_response?chat=是的'
-
-	t := url.QueryEscape(textIn.Content)
-
-	resp, err := m.client.Get(m.Server + "/chatbot/get_response?chat=" + t)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var respBody struct {
-		ChatbotResp string `json:"chatbot_resp"`
-	}
-	err = json.Unmarshal(body, &respBody)
-	if err != nil {
-		return nil, err
-	}
-
-	r := TextOut{
-		Author:   "MusharingChatbot",
-		Content:  respBody.ChatbotResp,
-		Priority: textIn.Priority,
-	}
-	return &r, nil
-}
-
-func NewMusharingChatbot(server string) Chatbot {
-	return &MusharingChatbot{
-		Server: server,
-		client: &http.Client{},
-	}
-}
-
-// endregion MusharingChatbot
 
 type Cooldown struct {
 	coolingdown atomic.Bool
@@ -103,14 +55,13 @@ func (c *Cooldown) accessWithCooldown() bool {
 
 // region ChatGPTChatbot
 
-// TODO
 type ChatGPTChatbot struct {
 	Server string
 	client *http.Client
 	Cooldown
 }
 
-func (c *ChatGPTChatbot) Chat(textIn *TextIn) (*TextOut, error) {
+func (c *ChatGPTChatbot) Chat(textIn *model.TextIn) (*model.TextOut, error) {
 	// curl -X POST localhost:9006/ask -d '{"prompt": "你好"}'
 
 	if !c.Cooldown.accessWithCooldown() {
@@ -124,7 +75,7 @@ func (c *ChatGPTChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 		return nil, err
 	}
 
-	textOut := TextOut{
+	textOut := model.TextOut{
 		Author:   "ChatGPTChatbot",
 		Content:  resp,
 		Priority: textIn.Priority,
@@ -216,10 +167,10 @@ func NewChatGPTChatbot(server string, accessToken string, prompt string) Chatbot
 // 高优先级的 Chatbot 应该是对话质量更高的（例如 ChatGPTChatbot），而低优先级的 Chatbot 用来保底。
 // 如果没有对应级别的 Chatbot，会往下滑到更低的级别。
 type PrioritizedChatbot struct {
-	chatbots map[Priority]Chatbot
+	chatbots map[model.Priority]Chatbot
 }
 
-func (p *PrioritizedChatbot) Chat(textIn *TextIn) (*TextOut, error) {
+func (p *PrioritizedChatbot) Chat(textIn *model.TextIn) (*model.TextOut, error) {
 	if textIn == nil {
 		return nil, nil
 	}
@@ -252,7 +203,7 @@ func (p *PrioritizedChatbot) Chat(textIn *TextIn) (*TextOut, error) {
 	return nil, nil
 }
 
-func NewPrioritizedChatbot(chatbots map[Priority]Chatbot) Chatbot {
+func NewPrioritizedChatbot(chatbots map[model.Priority]Chatbot) Chatbot {
 	return &PrioritizedChatbot{
 		chatbots: chatbots,
 	}

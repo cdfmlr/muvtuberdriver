@@ -3,11 +3,12 @@ package main
 import (
 	"bytes"
 	"errors"
+	"muvtuberdriver/model"
 	"net/http"
 )
 
 type Live2DDriver interface {
-	TextOutToLive2DDriver(textOut *TextOut) error
+	TextOutToLive2DDriver(textOut *model.TextOut) error
 }
 
 type live2dDriver struct {
@@ -22,7 +23,7 @@ func NewLive2DDriver(server string) Live2DDriver {
 	}
 }
 
-func (l *live2dDriver) TextOutToLive2DDriver(textOut *TextOut) error {
+func (l *live2dDriver) TextOutToLive2DDriver(textOut *model.TextOut) error {
 	// curl -X POST -d '你好' 'localhost:9011'
 	if textOut == nil {
 		return errors.New("textOut is nil")

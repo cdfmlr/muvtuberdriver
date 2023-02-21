@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"muvtuberdriver/model"
 	"strings"
 	"sync"
 	"time"
@@ -9,11 +10,11 @@ import (
 )
 
 type TextInFilter interface {
-	FilterTextIn(chIn chan *TextIn) (chOut chan *TextIn)
+	FilterTextIn(chIn chan *model.TextIn) (chOut chan *model.TextIn)
 }
 
 type TextOutFilter interface {
-	FilterTextOut(chIn chan *TextOut) (chOut chan *TextOut)
+	FilterTextOut(chIn chan *model.TextOut) (chOut chan *model.TextOut)
 }
 
 // TextFilterFunc 对字符串 text 进行过滤，返回 true 表示保留，false 则滤掉。
@@ -33,8 +34,8 @@ func filterTextChan[T any](chIn chan T, f TextFilterFunc, key func(T) string) (c
 	return chOut
 }
 
-func (f TextFilterFunc) FilterTextIn(chIn chan *TextIn) (chOut chan *TextIn) {
-	return filterTextChan(chIn, f, func(textIn *TextIn) string {
+func (f TextFilterFunc) FilterTextIn(chIn chan *model.TextIn) (chOut chan *model.TextIn) {
+	return filterTextChan(chIn, f, func(textIn *model.TextIn) string {
 		if textIn == nil {
 			return ""
 		}
@@ -42,8 +43,8 @@ func (f TextFilterFunc) FilterTextIn(chIn chan *TextIn) (chOut chan *TextIn) {
 	})
 }
 
-func (f TextFilterFunc) FilterTextOut(chIn chan *TextOut) (chOut chan *TextOut) {
-	return filterTextChan(chIn, f, func(textOut *TextOut) string {
+func (f TextFilterFunc) FilterTextOut(chIn chan *model.TextOut) (chOut chan *model.TextOut) {
+	return filterTextChan(chIn, f, func(textOut *model.TextOut) string {
 		if textOut == nil {
 			return ""
 		}
@@ -80,28 +81,28 @@ var ChineseFilter4TextOut TextOutFilter = TextFilterFunc(chineseFilter)
 // 1. 如果这些消息的 Priority 为 PriorityHighest 则输出所有这些消息；
 // 2. 否则，输出其中 Content 字数最多的一条；
 type PriorityReduceFilter struct {
-	temp     []*TextIn
+	temp     []*model.TextIn
 	mu       sync.RWMutex
 	duration time.Duration
 }
 
 func NewPriorityReduceFilter(duration time.Duration) *PriorityReduceFilter {
 	return &PriorityReduceFilter{
-		temp:     make([]*TextIn, 0, 10),
+		temp:     make([]*model.TextIn, 0, 10),
 		duration: duration,
 	}
 }
 
-func (f *PriorityReduceFilter) FilterTextIn(chIn chan *TextIn) (chOut chan *TextIn) {
+func (f *PriorityReduceFilter) FilterTextIn(chIn chan *model.TextIn) (chOut chan *model.TextIn) {
 	return f.filter(chIn)
 }
 
-func (f *PriorityReduceFilter) FilterTextOut(chIn chan *TextOut) (chOut chan *TextOut) {
+func (f *PriorityReduceFilter) FilterTextOut(chIn chan *model.TextOut) (chOut chan *model.TextOut) {
 	return f.filter(chIn)
 }
 
-func (f *PriorityReduceFilter) filter(chIn chan *Text) (chOut chan *Text) {
-	chOut = make(chan *TextOut, RecvMsgChanBuf)
+func (f *PriorityReduceFilter) filter(chIn chan *model.Text) (chOut chan *model.Text) {
+	chOut = make(chan *model.TextOut, RecvMsgChanBuf)
 	go func() {
 		timeout := time.NewTicker(f.duration)
 
@@ -125,8 +126,8 @@ func (f *PriorityReduceFilter) filter(chIn chan *Text) (chOut chan *Text) {
 }
 
 // selectOneInTemp 找出 temp 中最高的 Priority 。
-func (f *PriorityReduceFilter) maxPriorityInTemp() Priority {
-	var max Priority
+func (f *PriorityReduceFilter) maxPriorityInTemp() model.Priority {
+	var max model.Priority
 
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -154,7 +155,7 @@ func (f *PriorityReduceFilter) maxContentLengthInTemp() (maxLen int, index int) 
 	return max, idx
 }
 
-func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *Text) {
+func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *model.Text) {
 	f.mu.RLock()
 	switch len(f.temp) {
 	case 0:
@@ -167,8 +168,12 @@ func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *Text) {
 		f.mu.Lock()
 		f.temp = f.temp[:0]
 		f.mu.Unlock()
-		
-		t.Priority = PriorityHighest  // 消息少，提权，以求高质量 Chatbot 回复
+
+		if t == nil {
+			return
+		}
+
+		t.Priority = model.PriorityHighest // 消息少，提权，以求高质量 Chatbot 回复
 		log.Printf("PriorityReduceFilter outputMaxPriorityOnes [Priority -> Highest]: %+v", t)
 		chOut <- t
 		return
@@ -178,20 +183,20 @@ func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *Text) {
 
 	maxPriority := f.maxPriorityInTemp()
 
-	choosen := make([]*Text, 1)
+	choosen := make([]*model.Text, 1)
 
 	f.mu.RLock()
 	for _, t := range f.temp {
 		if t.Priority == maxPriority {
-			if t.Priority > PriorityHighest {
-				t.Priority = PriorityHighest // write
+			if t.Priority > model.PriorityHighest {
+				t.Priority = model.PriorityHighest // write
 			}
 			choosen = append(choosen, t)
 		}
 	}
 	f.mu.RUnlock()
 
-	if maxPriority == PriorityHighest {
+	if maxPriority == model.PriorityHighest {
 		// 如果这些消息的 Priority >= PriorityHighest 则输出所有这些消息；
 		for _, t := range choosen {
 			log.Printf("PriorityReduceFilter outputMaxPriorityOnes: %+v", t)
@@ -210,7 +215,7 @@ func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *Text) {
 	}
 }
 
-func maxLenOfTextInSlice(slice []*Text) (maxLen int, index int) {
+func maxLenOfTextInSlice(slice []*model.Text) (maxLen int, index int) {
 	if len(slice) == 0 {
 		return 0, 0
 	}
