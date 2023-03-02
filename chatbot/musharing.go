@@ -2,10 +2,12 @@ package chatbot
 
 import (
 	"context"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"log"
 	api "muvtuberdriver/chatbot/musharing_chatbot/v1"
 	"muvtuberdriver/model"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type MusharingChatbot struct {
@@ -57,6 +59,15 @@ func NewMusharingChatbot(server string) (Chatbot, error) {
 		<-m.close
 		_ = conn.Close()
 	}()
+
+	// ping
+	_, err = m.client.Chat(context.Background(), &api.ChatRequest{
+		Prompt: "ping",
+	})
+	if err != nil {
+		log.Printf("NewMusharingChatbot ping failed: %v", err)
+		return nil, err
+	}
 
 	return m, nil
 }

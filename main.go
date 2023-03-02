@@ -11,19 +11,33 @@ import (
 	"time"
 )
 
+// TODO: 参数已经太长了，上配置文件！
+
 var (
 	blivedmServerAddr    = flag.String("blivedm", "ws://localhost:12450/api/chat", "blivedm server address")
 	roomid               = flag.Int("roomid", 0, "blivedm roomid")
 	live2dDriverAddr     = flag.String("live2ddrv", "http://localhost:9004/driver", "live2d driver address")
-	musharingChatbotAddr = flag.String("mchatbot", "localhost:50051", "musharing chatbot api server address")
+	musharingChatbotAddr = flag.String("mchatbot", "localhost:50051", "musharing chatbot api server (gRPC) address")
 	textInHttpAddr       = flag.String("textinhttp", ":9010", "textIn http server address")
-	chatgptAddr          = flag.String("chatgpt", "http://localhost:9006", "chatgpt api server address")
-	chatgptAccessToken   = flag.String("chatgpt_access_token", "", "chatgpt access token")
+	chatgptAddr          = flag.String("chatgpt", "localhost:50052", "chatgpt api server (gRPC) address")
+	chatgptAccessToken   = arrayFlags{}
 	chatgptPrompt        = flag.String("chatgpt_prompt", "", "chatgpt prompt")
 	reduceDuration       = flag.Duration("reduce_duration", 2*time.Second, "reduce duration")
 )
 
+type arrayFlags []string
+
+func (i *arrayFlags) String() string {
+    return ""
+}
+
+func (i *arrayFlags) Set(value string) error {
+    *i = append(*i, value)
+    return nil
+}
+
 func main() {
+	flag.Var(&chatgptAccessToken, "chatgpt_access_token", "chatgpt access tokens (multiple values allowed)")
 	flag.Parse()
 
 	textInChan := make(chan *model.TextIn, RecvMsgChanBuf)
@@ -42,9 +56,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	chatgptChatbot, err := chatbot2.NewChatGPTChatbot(*chatgptAddr, chatgptAccessToken, *chatgptPrompt)
+	if err != nil {
+		log.Fatal(err)
+	}
 	chatbot := chatbot2.NewPrioritizedChatbot(map[model.Priority]chatbot2.Chatbot{
 		model.PriorityLow:  musharingChatbot,
-		model.PriorityHigh: chatbot2.NewChatGPTChatbot(*chatgptAddr, *chatgptAccessToken, *chatgptPrompt),
+		model.PriorityHigh: chatgptChatbot,
 	})
 	go chatbot2.TextOutFromChatbot(chatbot, textInFiltered, textOutChan)
 
