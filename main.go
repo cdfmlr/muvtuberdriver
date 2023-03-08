@@ -23,17 +23,18 @@ var (
 	chatgptAccessToken   = arrayFlags{}
 	chatgptPrompt        = flag.String("chatgpt_prompt", "", "chatgpt prompt")
 	reduceDuration       = flag.Duration("reduce_duration", 2*time.Second, "reduce duration")
+	sayerAudioDevice     = flag.String("audio_device", "", "sayer audio device. Run <say -a '?'> to get the list of audio devices. Pass the number of the audio device you want to use. . (Default: system sound output)")
 )
 
 type arrayFlags []string
 
 func (i *arrayFlags) String() string {
-    return ""
+	return ""
 }
 
 func (i *arrayFlags) Set(value string) error {
-    *i = append(*i, value)
-    return nil
+	*i = append(*i, value)
+	return nil
 }
 
 func main() {
@@ -73,7 +74,13 @@ func main() {
 
 	// out -> (live2d) & (say) & (stdout)
 	live2d := NewLive2DDriver(*live2dDriverAddr)
-	sayer := NewSayer(WithAudioDevice("65"))
+
+	var sayOptions []SayerOption
+	if *sayerAudioDevice != "" {
+		sayOptions = append(sayOptions, WithAudioDevice(*sayerAudioDevice))
+	}
+	sayer := NewSayer(sayOptions...)
+
 	for {
 		textOut := <-textOutFiltered
 
