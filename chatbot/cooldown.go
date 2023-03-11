@@ -43,9 +43,9 @@ func (c *Cooldown) setupInterval() {
 		if err == nil {
 			log.Printf("use cooldown interval from env: %v", interval)
 			c.Interval = interval
+			return
 		}
-	} else {
-		log.Printf("cooldown interval missing, use default: %v", DefaultCooldownInterval)
-		c.Interval = DefaultCooldownInterval
 	}
+	log.Printf("cooldown interval missing, use default: %v", DefaultCooldownInterval)
+	c.Interval = DefaultCooldownInterval
 }

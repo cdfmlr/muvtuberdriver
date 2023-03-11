@@ -34,6 +34,7 @@ type PrioritizedChatbot struct {
 	chatbots map[model.Priority]Chatbot
 }
 
+// TODO: timeout -> try others.
 func (p *PrioritizedChatbot) Chat(textIn *model.TextIn) (*model.TextOut, error) {
 	if textIn == nil {
 		return nil, nil

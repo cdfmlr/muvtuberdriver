@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -11,7 +12,7 @@ import (
 	"time"
 )
 
-// TODO: 参数已经太长了，上配置文件！
+// TODO: 参数已经太长了，必须上配置文件！
 
 var (
 	blivedmServerAddr    = flag.String("blivedm", "ws://localhost:12450/api/chat", "blivedm server address")
@@ -20,25 +21,24 @@ var (
 	musharingChatbotAddr = flag.String("mchatbot", "localhost:50051", "musharing chatbot api server (gRPC) address")
 	textInHttpAddr       = flag.String("textinhttp", ":9010", "textIn http server address")
 	chatgptAddr          = flag.String("chatgpt", "localhost:50052", "chatgpt api server (gRPC) address")
-	chatgptAccessToken   = arrayFlags{}
-	chatgptPrompt        = flag.String("chatgpt_prompt", "", "chatgpt prompt")
+	chatgptConfigs       = chatgptConfig{}
 	reduceDuration       = flag.Duration("reduce_duration", 2*time.Second, "reduce duration")
 	sayerAudioDevice     = flag.String("audio_device", "", "sayer audio device. Run <say -a '?'> to get the list of audio devices. Pass the number of the audio device you want to use. . (Default: system sound output)")
 )
 
-type arrayFlags []string
+type chatgptConfig []chatbot2.ChatGPTConfig
 
-func (i *arrayFlags) String() string {
+// String returns the default value (大概吧)
+func (i *chatgptConfig) String() string {
 	return ""
 }
 
-func (i *arrayFlags) Set(value string) error {
-	*i = append(*i, value)
-	return nil
+func (i *chatgptConfig) Set(value string) error {
+	return json.Unmarshal([]byte(value), &i)
 }
 
 func main() {
-	flag.Var(&chatgptAccessToken, "chatgpt_access_token", "chatgpt access tokens (multiple values allowed)")
+	flag.Var(&chatgptConfigs, "chatgpt_config", `chatgpt configs in json: [{"version": 3, "api_key": "sk_xxx", "initial_prompt": "hello"}, ...] `)
 	flag.Parse()
 
 	textInChan := make(chan *model.TextIn, RecvMsgChanBuf)
@@ -57,7 +57,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	chatgptChatbot, err := chatbot2.NewChatGPTChatbot(*chatgptAddr, chatgptAccessToken, *chatgptPrompt)
+	chatgptChatbot, err := chatbot2.NewChatGPTChatbot(*chatgptAddr, chatgptConfigs)
 	if err != nil {
 		log.Fatal(err)
 	}

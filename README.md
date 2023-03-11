@@ -4,6 +4,9 @@
 
 ## 启动
 
+THE FOLLOWING DOCS ARE OUTDATED!
+GOTO https://github.com/cdfmlr/muvtuber/blob/main/README.md FOR A UPDATED VERSION.
+
 ### chatbot_api
 
 ```sh
