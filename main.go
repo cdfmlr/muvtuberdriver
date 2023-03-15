@@ -9,6 +9,7 @@ import (
 	"muvtuberdriver/model"
 	"net/http"
 	"strings"
+	"sync"
 
 	// "log"
 	"time"
@@ -46,13 +47,32 @@ func main() {
 	textInChan := make(chan *model.TextIn, RecvMsgChanBuf)
 	textOutChan := make(chan *model.TextOut, RecvMsgChanBuf)
 
+	saying := sync.Mutex{}
+
+	var sayOptions []SayerOption
+	if *sayerAudioDevice != "" {
+		sayOptions = append(sayOptions, WithAudioDevice(*sayerAudioDevice))
+	}
+	sayer := NewSayer(sayOptions...)
+
 	// (dm) & (http) -> in
 	go TextInFromDm(*roomid, textInChan, WithBlivedmServer(*blivedmServerAddr))
 	go TextInFromHTTP(*textInHttpAddr, "/", textInChan)
 
 	// in -> filter -> in
-	textInFiltered := ChineseFilter4TextIn.FilterTextIn(textInChan)
+	textInFiltered := textInChan
+	// textInFiltered = ChineseFilter4TextIn.FilterTextIn(textInFiltered)
 	textInFiltered = NewPriorityReduceFilter(*reduceDuration).FilterTextIn(textInFiltered)
+	textInFiltered = TextFilterFunc(func(text string) bool {
+		live2dToMotion("flick_head") // 准备张嘴说话
+		go func() {
+			time.Sleep(time.Second*1 + *reduceDuration) // 提问和回答压到一起，经验值: chatgpt 请求时延 + textout 过滤周期
+			saying.Lock()
+			defer saying.Unlock()
+			sayer.Say(text)
+		}()
+		return true
+	}).FilterTextIn(textInFiltered)
 
 	// in -> chatbot -> out
 	musharingChatbot, err := chatbot2.NewMusharingChatbot(*musharingChatbotAddr)
@@ -77,12 +97,6 @@ func main() {
 	// out -> (live2d) & (say) & (stdout)
 	live2d := NewLive2DDriver(*live2dDriverAddr)
 
-	var sayOptions []SayerOption
-	if *sayerAudioDevice != "" {
-		sayOptions = append(sayOptions, WithAudioDevice(*sayerAudioDevice))
-	}
-	sayer := NewSayer(sayOptions...)
-
 	for {
 		textOut := <-textOutFiltered
 
@@ -90,11 +104,12 @@ func main() {
 			continue
 		}
 
-		live2dToMotion("flick_head") // 张嘴说话
-
 		fmt.Println(*textOut)
 		live2d.TextOutToLive2DDriver(textOut)
+
+		saying.Lock()
 		sayer.Say(textOut.Content)
+		saying.Unlock()
 
 		live2dToMotion("idle") // 说完闭嘴
 	}
