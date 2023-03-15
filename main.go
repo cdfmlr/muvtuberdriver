@@ -7,6 +7,8 @@ import (
 	"log"
 	chatbot2 "muvtuberdriver/chatbot"
 	"muvtuberdriver/model"
+	"net/http"
+	"strings"
 
 	// "log"
 	"time"
@@ -88,8 +90,37 @@ func main() {
 			continue
 		}
 
+		live2dToMotion("flick_head") // 张嘴说话
+
 		fmt.Println(*textOut)
 		live2d.TextOutToLive2DDriver(textOut)
 		sayer.Say(textOut.Content)
+
+		live2dToMotion("idle") // 说完闭嘴
 	}
+}
+
+// live2dToIdle is a hardcoded quick fix to "live2d不说话的时候也在动嘴"
+//
+// TODO: 有空好好写一下。
+//
+//	curl -X POST localhost:9002/live2d -H 'Content-Type: application/json' -d '{"motion": "idle"}'
+func live2dToMotion(motion string) {
+	client := &http.Client{}
+	var data = strings.NewReader(fmt.Sprintf(`{"motion": "%s"}`, motion))
+	req, err := http.NewRequest("POST", "http://localhost:9002/live2d", data)
+	if err != nil {
+		log.Printf("[toIdle] http.NewRequest failed. err=%v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[toIdle] http client do request failed. err=%v", err)
+	}
+	defer resp.Body.Close()
+	// bodyText, err := io.ReadAll(resp.Body)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// fmt.Printf("%s\n", bodyText)
 }
