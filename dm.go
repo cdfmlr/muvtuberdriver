@@ -129,18 +129,20 @@ func chatClient(ws *websocket.Conn, recvMsgCh chan<- string) {
 	heartbeat := time.NewTicker(blivedmHeartbeatInterval)
 	defer heartbeat.Stop()
 
-	log.Println("chat client started")
+	log.Println("[dm] chatClient started")
 
 LOOP:
 	for {
 		select {
 		case <-heartbeat.C:
 			if err := websocket.Message.Send(ws, blivedmHeartbeatMessage); err != nil {
+				log.Printf("[dm] chatClient send heartbeat to blivedm failed: break the LOOP. err=%v", err)
 				break LOOP
 			}
 		default:
 			var msg string
 			if err := websocket.Message.Receive(ws, &msg); err != nil {
+				log.Printf("[dm] chatClient recv message from blivedm failed: break the LOOP. err=%v", err)
 				break LOOP
 			}
 			if msg == blivedmHeartbeatMessage { // a quick but unqualified filter
@@ -149,6 +151,8 @@ LOOP:
 			recvMsgCh <- msg
 		}
 	}
+	// unexpected break: close the chan to notify the customer.
+	close(recvMsgCh)
 }
 
 // newBlivedmClient creates a new websocket connection to blivedm server,
@@ -284,39 +288,53 @@ func superChatMessageHandler(message *blivedmMessage) (*model.TextIn, error) {
 }
 
 // TextInFromDm 从 roomid 的直播间接收弹幕消息，发送到 textIn。
+// Blocks forever.
 func TextInFromDm(roomid int, textIn chan<- *model.TextIn, opts ...BlivedmClientOption) (err error) {
-	log.Printf("start receiving text from room %d", roomid)
-	recvMsgCh, err := newBlivedmClient(roomid, opts...)
-	if err != nil {
-		return err
-	}
-
-	for msg := range recvMsgCh {
-		message, err := unmarshalMessage(msg)
+	retryAt, retryInterval := time.Now(), time.Second
+	for {
+		log.Printf("[dm] TextInFromDm: create newBlivedmClient to room %d", roomid)
+		recvMsgCh, err := newBlivedmClient(roomid, opts...)
 		if err != nil {
-			fmt.Printf("unmarshalMessage(%s) error: %v\n", msg, err)
-			continue
+			log.Printf("[dm] TextInFromDm: newBlivedmClient failed: %v", err)
+			goto RETRY
 		}
 
-		switch message.Cmd {
-		case blivedmCmdAddText:
-			t, err := textMessageHandler(message)
+		for msg := range recvMsgCh {
+			message, err := unmarshalMessage(msg)
 			if err != nil {
-				fmt.Printf("textMessageHandler(%s) error: %v\n", msg, err)
+				fmt.Printf("unmarshalMessage(%s) error: %v\n", msg, err)
 				continue
 			}
-			log.Printf("TextInFromDm: %s", t.Content)
-			textIn <- t
-		case blivedmCmdAddSuperChat:
-			t, err := superChatMessageHandler(message)
-			if err != nil {
-				fmt.Printf("superChatMessageHandler(%s) error: %v\n", msg, err)
-				continue
+
+			switch message.Cmd {
+			case blivedmCmdAddText:
+				t, err := textMessageHandler(message)
+				if err != nil {
+					fmt.Printf("textMessageHandler(%s) error: %v\n", msg, err)
+					continue
+				}
+				log.Printf("[dm] TextInFromDm: %s", t.Content)
+				textIn <- t
+			case blivedmCmdAddSuperChat:
+				t, err := superChatMessageHandler(message)
+				if err != nil {
+					fmt.Printf("[dm] superChatMessageHandler(%s) error: %v\n", msg, err)
+					continue
+				}
+				log.Printf("[dm] TextInFromDm [SC]: %s", t.Content)
+				textIn <- t
 			}
-			log.Printf("TextInFromDm [SC]: %s", t.Content)
-			textIn <- t
 		}
+		// recvMsgCh 被 close 掉时会走下面的 RETRY
+
+	RETRY:
+		if time.Since(retryAt) < retryInterval*3 { // what a quick break
+			retryInterval *= 2
+		} else {
+			retryInterval = time.Second
+		}
+		log.Printf("[dm] TextInFromDm: recvMsgCh closed => BlivedmClient down. Try to renew in %v...", retryInterval)
+		time.Sleep(retryInterval)
+		retryAt = time.Now()
 	}
-
-	return nil
 }
