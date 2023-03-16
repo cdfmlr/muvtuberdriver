@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-const ChatGptRpcTimeout = time.Second * 30
+const ChatGptRpcTimeout = time.Second * 50
 
 // ChatbotServiceClient = Conn + Client
 type ChatbotServiceClient struct {
@@ -41,6 +41,7 @@ type ChatGPTConfig struct {
 // chatgptSession wraps sessionId to make it Poolable
 type chatgptSession struct {
 	sessionId sessionId
+	failed    int
 }
 
 func (s *chatgptSession) Close() error {
@@ -92,7 +93,7 @@ func NewChatGPTChatbot(server string, configs []ChatGPTConfig) (Chatbot, error) 
 	// FIXME: hardcode
 	c.sessionsPool = pool.NewPool(10, func() (*chatgptSession, error) {
 		sessionId, err := c.newSession(c.nextConfig())
-		return &chatgptSession{sessionId}, err
+		return &chatgptSession{sessionId: sessionId}, err
 	})
 
 	return c, nil
@@ -180,9 +181,14 @@ func (c *ChatGPTChatbot) chat(prompt string) (string, error) {
 		Prompt:    prompt,
 	})
 	if err != nil {
-		c.sessionsPool.Release(session) // something wrong, won't reuse this session anymore
+		session.failed += 1
+		log.Printf("ChatGPTChatbot.chat RPC err: %v. Session will be released after successive errors (%v/3).", err, session.failed)
+		if session.failed >= 3 { // successive errors, won't reuse this session anymore
+			c.sessionsPool.Release(session)
+		}
 		return "", err
 	} else {
+		session.failed = 0
 		c.sessionsPool.Put(session) // use session successfully.
 	}
 
