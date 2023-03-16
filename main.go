@@ -92,6 +92,17 @@ func main() {
 	// out -> filter -> out
 	textOutFiltered := textOutChan
 	// textOutFiltered := ChineseFilter4TextOut.FilterTextOut(textOutChan)
+	textOutFiltered = TextFilterFunc(func(text string) bool {
+		notTooLong := len(text) < 500
+		if !notTooLong {  // toooo loooong
+			saying.Lock()
+			resp := tooLongResponses[tooLongRespIndex]
+			tooLongRespIndex = (tooLongRespIndex + 1) % len(tooLongResponses)
+			sayer.Say(resp)
+			saying.Unlock()
+		}
+		return notTooLong
+	}).FilterTextOut(textOutFiltered)
 	textOutFiltered = NewPriorityReduceFilter(*reduceDuration).FilterTextOut(textOutFiltered)
 
 	// out -> (live2d) & (say) & (stdout)
@@ -139,3 +150,17 @@ func live2dToMotion(motion string) {
 	// }
 	// fmt.Printf("%s\n", bodyText)
 }
+
+var tooLongRespIndex = 0
+var tooLongResponses = []string{
+	"哎呀，这个故事太长了，我怕我讲不完。",
+	"对不起啊，这个事情太长了，让我想起了小时候听外婆给我讲故事，太多情节了，我不会讲。",
+	"噫，这个话题真的很长，我的嘴唇已经准备要罢工了。",
+	"呜呜呜，这个事情太长了，我怕我讲到天荒地老。",
+	"哎呀呀，这个问题太长了，我都能听见我妈妈在背后催促我赶紧去睡觉了，所以我不能讲太多啦。",
+	"啊，这个故事的情节和人物都好多，我怕我讲起来太久了，你都听累了。",
+	"哟，这个事情真的太长了，我已经可以预见到我们明天都还在讲这个话题，哈哈哈。",
+	"嘘嘘，这个问题真的好长好长，让我们下次见面再聊吧，好不好？",
+	"抱歉这个太长了，我不能说。",
+}
+
