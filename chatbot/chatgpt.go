@@ -185,6 +185,8 @@ func (c *ChatGPTChatbot) chat(prompt string) (string, error) {
 		log.Printf("ChatGPTChatbot.chat RPC err: %v. Session will be released after successive errors (%v/3).", err, session.failed)
 		if session.failed >= 3 { // successive errors, won't reuse this session anymore
 			c.sessionsPool.Release(session)
+		} else {
+			c.sessionsPool.Put(session) // this session can be reused.
 		}
 		return "", err
 	} else {
