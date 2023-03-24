@@ -93,13 +93,14 @@ func main() {
 	textOutFiltered := textOutChan
 	// textOutFiltered := ChineseFilter4TextOut.FilterTextOut(textOutChan)
 	textOutFiltered = TextFilterFunc(func(text string) bool {
-		notTooLong := len(text) < 500
+		notTooLong := len(text) < 800
 		if !notTooLong {  // toooo loooong
 			saying.Lock()
 			resp := tooLongResponses[tooLongRespIndex]
 			tooLongRespIndex = (tooLongRespIndex + 1) % len(tooLongResponses)
 			sayer.Say(resp)
 			saying.Unlock()
+			live2dToMotion("idle") // 说完闭嘴
 		}
 		return notTooLong
 	}).FilterTextOut(textOutFiltered)
