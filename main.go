@@ -27,6 +27,8 @@ var (
 	chatgptConfigs       = chatgptConfig{}
 	reduceDuration       = flag.Duration("reduce_duration", 2*time.Second, "reduce duration")
 	sayerAudioDevice     = flag.String("audio_device", "", "sayer audio device. Run <say -a '?'> to get the list of audio devices. Pass the number of the audio device you want to use. . (Default: system sound output)")
+	sayerVoice           = flag.String("voice", "", "sayer voice. run <say -v '?'> for help")
+	live2dMsgFwd         = flag.String("live2d_msg_fwd", "http://localhost:9002/live2d", "live2d message forward from http")
 )
 
 type chatgptConfig []chatbot2.ChatGPTConfig
@@ -52,6 +54,9 @@ func main() {
 	var sayOptions []SayerOption
 	if *sayerAudioDevice != "" {
 		sayOptions = append(sayOptions, WithAudioDevice(*sayerAudioDevice))
+	}
+	if *sayerVoice != "" {
+		sayOptions = append(sayOptions, WithVoice(*sayerVoice))
 	}
 	sayer := NewSayer(sayOptions...)
 
@@ -94,7 +99,7 @@ func main() {
 	// textOutFiltered := ChineseFilter4TextOut.FilterTextOut(textOutChan)
 	textOutFiltered = TextFilterFunc(func(text string) bool {
 		notTooLong := len(text) < 800
-		if !notTooLong {  // toooo loooong
+		if !notTooLong { // toooo loooong
 			saying.Lock()
 			resp := tooLongResponses[tooLongRespIndex]
 			tooLongRespIndex = (tooLongRespIndex + 1) % len(tooLongResponses)
@@ -135,7 +140,7 @@ func main() {
 func live2dToMotion(motion string) {
 	client := &http.Client{}
 	var data = strings.NewReader(fmt.Sprintf(`{"motion": "%s"}`, motion))
-	req, err := http.NewRequest("POST", "http://localhost:9002/live2d", data)
+	req, err := http.NewRequest("POST", *live2dMsgFwd, data)
 	if err != nil {
 		log.Printf("[toIdle] http.NewRequest failed. err=%v", err)
 	}
@@ -164,4 +169,3 @@ var tooLongResponses = []string{
 	"嘘嘘，这个问题真的好长好长，让我们下次见面再聊吧，好不好？",
 	"抱歉这个太长了，我不能说。",
 }
-
