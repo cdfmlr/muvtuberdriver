@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"log"
 	"muvtuberdriver/model"
 	"net/http"
@@ -36,6 +38,18 @@ func TextInFromHTTP(addr string, routePath string, textInChan chan<- *model.Text
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 	r.Run(addr)
+}
+
+func TextOutToHttp(addr string, textOut *model.TextOut) {
+	if addr == "" {
+		return
+	}
+	j, err := json.Marshal(textOut)
+	if err != nil {
+		log.Println("TextOutToHttp marshal json error", err)
+		return
+	}
+	http.Post(addr, "application/json", bytes.NewReader(j))
 }
 
 func init() {

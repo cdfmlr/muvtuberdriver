@@ -23,6 +23,7 @@ var (
 	live2dDriverAddr     = flag.String("live2ddrv", "http://localhost:9004/driver", "live2d driver address")
 	musharingChatbotAddr = flag.String("mchatbot", "localhost:50051", "musharing chatbot api server (gRPC) address")
 	textInHttpAddr       = flag.String("textinhttp", ":9010", "textIn http server address")
+	textOutHttpAddr      = flag.String("textouthttp", "", "send textOut to http server (e.g. http://localhost:51080)")
 	chatgptAddr          = flag.String("chatgpt", "localhost:50052", "chatgpt api server (gRPC) address")
 	chatgptConfigs       = chatgptConfig{}
 	reduceDuration       = flag.Duration("reduce_duration", 2*time.Second, "reduce duration")
@@ -127,6 +128,10 @@ func main() {
 		saying.Lock()
 		sayer.Say(textOut.Content)
 		saying.Unlock()
+
+		if *textOutHttpAddr != "" {
+			TextOutToHttp(*textOutHttpAddr, textOut)
+		}
 
 		live2dToMotion("idle") // 说完闭嘴
 	}
