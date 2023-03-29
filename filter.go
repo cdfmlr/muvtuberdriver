@@ -133,6 +133,9 @@ func (f *PriorityReduceFilter) maxPriorityInTemp() model.Priority {
 	defer f.mu.RUnlock()
 
 	for _, t := range f.temp {
+		if t == nil {
+			continue
+		}
 		if t.Priority >= max {
 			max = t.Priority
 		}
@@ -187,6 +190,9 @@ func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *model.Text) {
 
 	f.mu.RLock()
 	for _, t := range f.temp {
+		if t == nil {
+			continue
+		}
 		if t.Priority == maxPriority {
 			if t.Priority > model.PriorityHighest {
 				t.Priority = model.PriorityHighest // write

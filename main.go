@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	chatbot2 "muvtuberdriver/chatbot"
 	"muvtuberdriver/model"
 	"net/http"
@@ -29,7 +30,10 @@ var (
 	reduceDuration       = flag.Duration("reduce_duration", 2*time.Second, "reduce duration")
 	sayerAudioDevice     = flag.String("audio_device", "", "sayer audio device. Run <say -a '?'> to get the list of audio devices. Pass the number of the audio device you want to use. . (Default: system sound output)")
 	sayerVoice           = flag.String("voice", "", "sayer voice. run <say -v '?'> for help")
+	sayerRate            = flag.String("rate", "", "sayer rate.")
 	live2dMsgFwd         = flag.String("live2d_msg_fwd", "http://localhost:9002/live2d", "live2d message forward from http")
+	readDm               = flag.Bool("readdm", true, "read comment?")
+	dropHttpOut          = flag.Int("drophttpout", 5, "textOutHttp drop rate: 0~100")
 )
 
 type chatgptConfig []chatbot2.ChatGPTConfig
@@ -59,11 +63,18 @@ func main() {
 	if *sayerVoice != "" {
 		sayOptions = append(sayOptions, WithVoice(*sayerVoice))
 	}
+	if *sayerRate != "" {
+		sayOptions = append(sayOptions, WithRate(*sayerRate))
+	}
 	sayer := NewSayer(sayOptions...)
 
 	// (dm) & (http) -> in
-	go TextInFromDm(*roomid, textInChan, WithBlivedmServer(*blivedmServerAddr))
-	go TextInFromHTTP(*textInHttpAddr, "/", textInChan)
+	if *roomid != 0 {
+		go TextInFromDm(*roomid, textInChan, WithBlivedmServer(*blivedmServerAddr))
+	}
+	if *textInHttpAddr != "" {
+		go TextInFromHTTP(*textInHttpAddr, "/", textInChan)
+	}
 
 	// in -> filter -> in
 	textInFiltered := textInChan
@@ -72,6 +83,9 @@ func main() {
 	textInFiltered = TextFilterFunc(func(text string) bool {
 		live2dToMotion("flick_head") // 准备张嘴说话
 		go func() {
+			if !*readDm {
+				return
+			}
 			time.Sleep(time.Second*1 + *reduceDuration) // 提问和回答压到一起，经验值: chatgpt 请求时延 + textout 过滤周期
 			saying.Lock()
 			defer saying.Unlock()
@@ -130,7 +144,11 @@ func main() {
 		saying.Unlock()
 
 		if *textOutHttpAddr != "" {
-			TextOutToHttp(*textOutHttpAddr, textOut)
+			if rand.Intn(100) >= *dropHttpOut {
+				TextOutToHttp(*textOutHttpAddr, textOut)
+			} else {
+				log.Println("random drop textOut to http")
+			}
 		}
 
 		live2dToMotion("idle") // 说完闭嘴
