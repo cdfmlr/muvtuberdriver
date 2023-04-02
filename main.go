@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -14,26 +15,31 @@ import (
 
 	// "log"
 	"time"
+
+	"golang.org/x/exp/slog"
 )
 
 // TODO: 参数已经太长了，必须上配置文件！
 
 var (
-	blivedmServerAddr    = flag.String("blivedm", "ws://localhost:12450/api/chat", "blivedm server address")
+	blivedmServerAddr    = flag.String("blivedm", "ws://localhost:12450/api/chat", "(dial) blivedm server address")
 	roomid               = flag.Int("roomid", 0, "blivedm roomid")
-	live2dDriverAddr     = flag.String("live2ddrv", "http://localhost:9004/driver", "live2d driver address")
-	musharingChatbotAddr = flag.String("mchatbot", "localhost:50051", "musharing chatbot api server (gRPC) address")
-	textInHttpAddr       = flag.String("textinhttp", ":9010", "textIn http server address")
-	textOutHttpAddr      = flag.String("textouthttp", "", "send textOut to http server (e.g. http://localhost:51080)")
-	chatgptAddr          = flag.String("chatgpt", "localhost:50052", "chatgpt api server (gRPC) address")
+	live2dDriverAddr     = flag.String("live2ddrv", "http://localhost:9004/driver", "(dail) live2d driver address")
+	musharingChatbotAddr = flag.String("mchatbot", "localhost:50051", "(dail) musharing chatbot api server (gRPC) address")
+	textInHttpAddr       = flag.String("textinhttp", ":9010", "(listen) textIn http server address")
+	textOutHttpAddr      = flag.String("textouthttp", "", "(dail) send textOut to http server (e.g. http://localhost:51080)")
+	chatgptAddr          = flag.String("chatgpt", "localhost:50052", "(dail) chatgpt api server (gRPC) address")
 	chatgptConfigs       = chatgptConfig{}
 	reduceDuration       = flag.Duration("reduce_duration", 2*time.Second, "reduce duration")
-	sayerAudioDevice     = flag.String("audio_device", "", "sayer audio device. Run <say -a '?'> to get the list of audio devices. Pass the number of the audio device you want to use. . (Default: system sound output)")
-	sayerVoice           = flag.String("voice", "", "sayer voice. run <say -v '?'> for help")
-	sayerRate            = flag.String("rate", "", "sayer rate.")
-	live2dMsgFwd         = flag.String("live2d_msg_fwd", "http://localhost:9002/live2d", "live2d message forward from http")
-	readDm               = flag.Bool("readdm", true, "read comment?")
-	dropHttpOut          = flag.Int("drophttpout", 5, "textOutHttp drop rate: 0~100")
+
+	live2dMsgFwd = flag.String("live2d_msg_fwd", "http://localhost:9002/live2d", "(dail) live2d message forward from http")
+	readDm       = flag.Bool("readdm", true, "read comment?")
+	dropHttpOut  = flag.Int("drophttpout", 5, "textOutHttp drop rate: 0~100")
+
+	// new sayer as a srv & audioview
+	audioControllerAddr = flag.String("audiocontroller", ":9020", "(listen) audio controller ws server address")
+	sayerAddr           = flag.String("sayer", "localhost:51055", "(dial) sayer gRPC server address")
+	sayerRole           = flag.String("sayerrole", "", "role to sayer")
 )
 
 type chatgptConfig []chatbot2.ChatGPTConfig
@@ -54,19 +60,43 @@ func main() {
 	textInChan := make(chan *model.TextIn, RecvMsgChanBuf)
 	textOutChan := make(chan *model.TextOut, RecvMsgChanBuf)
 
-	saying := sync.Mutex{}
+	audioController := NewAudioController()
+	go func() {
+		log.Fatal(http.ListenAndServe(
+			*audioControllerAddr,
+			audioController.WsHandler()))
+	}()
 
-	var sayOptions []SayerOption
-	if *sayerAudioDevice != "" {
-		sayOptions = append(sayOptions, WithAudioDevice(*sayerAudioDevice))
+	saying := sync.Mutex{}
+	sayer := NewSayer(*sayerAddr, *sayerRole, audioController)
+	say := func(text string) {
+		defer slog.Info("say: done", "text", text)
+		text = strings.TrimSpace(text)
+		if text == "" {
+			return
+		}
+
+		saying.Lock()
+		defer saying.Unlock()
+
+		live2dToMotion("flick_head") // 准备张嘴说话
+		defer live2dToMotion("idle") // 说完闭嘴
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+		defer cancel()
+
+		ch, err := sayer.Say(ctx, text)
+		if err != nil {
+			slog.Warn("say failed", "err", err, "text", text)
+			return
+		}
+		for r := range ch {
+			switch r {
+			case StatusEnd:
+				return
+			}
+		}
 	}
-	if *sayerVoice != "" {
-		sayOptions = append(sayOptions, WithVoice(*sayerVoice))
-	}
-	if *sayerRate != "" {
-		sayOptions = append(sayOptions, WithRate(*sayerRate))
-	}
-	sayer := NewSayer(sayOptions...)
 
 	// (dm) & (http) -> in
 	if *roomid != 0 {
@@ -80,17 +110,14 @@ func main() {
 	textInFiltered := textInChan
 	// textInFiltered = ChineseFilter4TextIn.FilterTextIn(textInFiltered)
 	textInFiltered = NewPriorityReduceFilter(*reduceDuration).FilterTextIn(textInFiltered)
+
+	// read dm
 	textInFiltered = TextFilterFunc(func(text string) bool {
+		if !*readDm {
+			return true
+		}
 		live2dToMotion("flick_head") // 准备张嘴说话
-		go func() {
-			if !*readDm {
-				return
-			}
-			time.Sleep(time.Second*1 + *reduceDuration) // 提问和回答压到一起，经验值: chatgpt 请求时延 + textout 过滤周期
-			saying.Lock()
-			defer saying.Unlock()
-			sayer.Say(text)
-		}()
+		say(text)
 		return true
 	}).FilterTextIn(textInFiltered)
 
@@ -112,15 +139,15 @@ func main() {
 	// out -> filter -> out
 	textOutFiltered := textOutChan
 	// textOutFiltered := ChineseFilter4TextOut.FilterTextOut(textOutChan)
+
+	// too long: no say
 	textOutFiltered = TextFilterFunc(func(text string) bool {
 		notTooLong := len(text) < 800
 		if !notTooLong { // toooo loooong
-			saying.Lock()
+			log.Println("too long, drop it:", ellipsis(text, 30))
 			resp := tooLongResponses[tooLongRespIndex]
 			tooLongRespIndex = (tooLongRespIndex + 1) % len(tooLongResponses)
-			sayer.Say(resp)
-			saying.Unlock()
-			live2dToMotion("idle") // 说完闭嘴
+			say(resp)
 		}
 		return notTooLong
 	}).FilterTextOut(textOutFiltered)
@@ -139,9 +166,7 @@ func main() {
 		fmt.Println(*textOut)
 		live2d.TextOutToLive2DDriver(textOut)
 
-		saying.Lock()
-		sayer.Say(textOut.Content)
-		saying.Unlock()
+		say(textOut.Content)
 
 		if *textOutHttpAddr != "" {
 			if rand.Intn(100) >= *dropHttpOut {
@@ -150,9 +175,26 @@ func main() {
 				log.Println("random drop textOut to http")
 			}
 		}
-
-		live2dToMotion("idle") // 说完闭嘴
 	}
+}
+
+// ellipsis long s -> "front...end"
+func ellipsis(s string, n int) string {
+	r := []rune(s)
+
+	if len(r) <= n {
+		return s
+	}
+
+	n -= 3
+	h := n / 2
+
+	var sb strings.Builder
+	sb.WriteString(string(r[:h]))
+	sb.WriteString("...")
+	sb.WriteString(string(r[len(r)-h:]))
+
+	return sb.String()
 }
 
 // live2dToIdle is a hardcoded quick fix to "live2d不说话的时候也在动嘴"

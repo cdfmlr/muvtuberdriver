@@ -1,92 +1,89 @@
 package main
 
 import (
-	"errors"
-	"log"
-	"os/exec"
+	"context"
+	"muvtuberdriver/musayerapi"
 	"strings"
-	"time"
 )
 
 type Sayer interface {
-	Say(text string) error
+	// Say is non-blocking.
+	//
+	// returned chan reports the status of the audio playing (start, end) and
+	// it will be closed when the audioview finished playing the audio.
+	// ctx is used to cancel the waiting (not the say job, the command always sent)
+	Say(ctx context.Context, text string) (chan AudioPlayStatus, error)
 }
 
-// sayer is a caller of the SAY(1) command on macOS.
+// sayer calls:
+//   - musayerapi.SayerClientPool.Say: to get the audio
+//   - AudioController.PlayVocal: to play the audio
 type sayer struct {
-	voice       string // Specify the voice to be used.
-	rate        string // Speech rate to be used, in words per minute.
-	audioDevice string // Specify, by ID or name prefix, an audio device to be used to play the audio
+	cli              *musayerapi.SayerClientPool
+	role             string
+	auidioController AudioController // XXX: use chan instead of injecting AudioController
 }
 
-func NewSayer(o ...SayerOption) Sayer {
-	s := &sayer{}
-	for _, opt := range o {
-		opt(s)
+func NewSayer(addr string, role string, audioController AudioController) Sayer {
+	pool, err := musayerapi.NewSayerClientPool(addr, 8)
+	if err != nil {
+		panic(err) // NewSayerClientPool should not fail
 	}
-	return s
-}
-
-// SayerOption configures a sayer.
-// Available options are WithVoice, WithRate and WithAudioDevice.
-type SayerOption func(s *sayer)
-
-func WithVoice(voice string) SayerOption {
-	return func(s *sayer) {
-		s.voice = voice
+	return &sayer{
+		cli:              pool,
+		role:             role,
+		auidioController: audioController,
 	}
 }
 
-func WithRate(rate string) SayerOption {
-	return func(s *sayer) {
-		s.rate = rate
+// Say wraps say() and do waiting jobs.
+// Say is non-blocking. It do job in a goroutine and return immediately.
+func (s *sayer) Say(ctx context.Context, text string) (chan AudioPlayStatus, error) {
+	ch := make(chan AudioPlayStatus, 2)
+
+	trackID, err := s.say(text)
+	if err != nil {
+		return nil, err
+	}
+	if len(trackID) == 0 {
+		ch <- StatusStart
+		ch <- StatusEnd
+		return ch, nil
 	}
 
-}
-
-func WithAudioDevice(audioDevice string) SayerOption {
-	return func(s *sayer) {
-		s.audioDevice = audioDevice
-	}
-}
-
-func (s *sayer) say(text string) error {
-	// say -v voice -r rate -a audioDevice text
-
-	text = strings.TrimSpace(text)
-
-	if text == "" {
-		return nil
-	}
-
-	args := []string{}
-	if s.voice != "" {
-		args = append(args, "-v", s.voice)
-	}
-	if s.rate != "" {
-		args = append(args, "-r", s.rate)
-	}
-	if s.audioDevice != "" {
-		args = append(args, "-a", s.audioDevice)
-	}
-	args = append(args, text)
-
-	return exec.Command("say", args...).Run()
-}
-
-func (s *sayer) Say(text string) error {
-	timeout := 15 * time.Second
-	ch := make(chan error, 1)
-
+	ctx, cancel := context.WithCancel(ctx)
 	go func() {
-		ch <- s.say(text)
+		s.auidioController.Wait(ctx, ReportStart(trackID))
+		ch <- StatusStart
 	}()
 
-	select {
-	case err := <-ch:
-		return err
-	case <-time.After(timeout):
-		log.Print("say: timeout")
-		return errors.New("say: timeout")
+	go func() {
+		s.auidioController.Wait(ctx, ReportEnd(trackID))
+		cancel() // end the goroutine above
+		ch <- StatusEnd
+		close(ch)
+	}()
+
+	return ch, nil
+}
+
+// say converts text to audio (via musayerapi) and play it (via AudioController).
+func (s *sayer) say(text string) (trackID string, err error) {
+	text = strings.TrimSpace(text)
+	if len(text) == 0 {
+		return "", nil
 	}
+
+	// _, _, err := s.cli.Say("miku", text)
+	// 草，这个 GitHub Copilot 老术力口了，有 role 字段还硬编码个 miku hhh
+
+	format, audio, err := s.cli.Say(s.role, text)
+	if err != nil {
+		return "", err
+	}
+
+	track := s.auidioController.AudioToTrack(format, audio)
+	s.auidioController.PlayVocal(track)
+
+	return track.ID, nil
 }
