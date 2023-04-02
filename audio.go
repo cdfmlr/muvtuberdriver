@@ -187,7 +187,7 @@ func (c *audioController) handleReport(msg *AudioMessage) {
 		slog.Warn("[audioController] recv report failed: ID is empty")
 		return
 	}
-	if report.Status != StatusStart && report.Status != StatusEnd {
+	if report.Status != AudioPlayStatusStart && report.Status != AudioPlayStatusEnd {
 		slog.Error("report status is not start or end", "status", report.Status)
 		return
 	}
@@ -256,14 +256,14 @@ type Report struct {
 func ReportStart(id string) *Report {
 	return &Report{
 		ID:     id,
-		Status: StatusStart,
+		Status: AudioPlayStatusStart,
 	}
 }
 
 func ReportEnd(id string) *Report {
 	return &Report{
 		ID:     id,
-		Status: StatusEnd,
+		Status: AudioPlayStatusEnd,
 	}
 }
 
@@ -271,12 +271,14 @@ func (r *Report) String() string {
 	return fmt.Sprintf("Report(%s: %s)", r.ID, r.Status)
 }
 
+type AudioPlayAt string
+
 // PlayModes
 const (
-	PlayAtNext      = "next"
-	PlayAtNow       = "now"
-	PlayAtResetNext = "resetNext"
-	PlayAtResetNow  = "resetNow"
+	PlayAtNext      AudioPlayAt = "next"
+	PlayAtNow       AudioPlayAt = "now"
+	PlayAtResetNext AudioPlayAt = "resetNext"
+	PlayAtResetNow  AudioPlayAt = "resetNow"
 )
 
 // cmds
@@ -291,8 +293,8 @@ const (
 type AudioPlayStatus string
 
 // status from report
-// XXX: 有没有必要引入 err 状态呢？
 const (
-	StatusStart AudioPlayStatus = "start"
-	StatusEnd   AudioPlayStatus = "end"
+	AudioPlayStatusStart AudioPlayStatus = "start"
+	AudioPlayStatusEnd   AudioPlayStatus = "end"
+	AudioPlayStatusErr   AudioPlayStatus = "err"
 )

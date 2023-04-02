@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,12 +10,7 @@ import (
 	"muvtuberdriver/model"
 	"net/http"
 	"strings"
-	"sync"
-
-	// "log"
 	"time"
-
-	"golang.org/x/exp/slog"
 )
 
 // TODO: 参数已经太长了，必须上配置文件！
@@ -67,36 +61,9 @@ func main() {
 			audioController.WsHandler()))
 	}()
 
-	saying := sync.Mutex{}
-	sayer := NewSayer(*sayerAddr, *sayerRole, audioController)
-	say := func(text string) {
-		defer slog.Info("say: done", "text", text)
-		text = strings.TrimSpace(text)
-		if text == "" {
-			return
-		}
+	live2d := NewLive2DDriver(*live2dDriverAddr, *live2dMsgFwd)
 
-		saying.Lock()
-		defer saying.Unlock()
-
-		live2dToMotion("flick_head") // 准备张嘴说话
-		defer live2dToMotion("idle") // 说完闭嘴
-
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
-		defer cancel()
-
-		ch, err := sayer.Say(ctx, text)
-		if err != nil {
-			slog.Warn("say failed", "err", err, "text", text)
-			return
-		}
-		for r := range ch {
-			switch r {
-			case StatusEnd:
-				return
-			}
-		}
-	}
+	sayer := NewAllInOneSayer(*sayerAddr, *sayerRole, audioController, live2d)
 
 	// (dm) & (http) -> in
 	if *roomid != 0 {
@@ -116,8 +83,8 @@ func main() {
 		if !*readDm {
 			return true
 		}
-		live2dToMotion("flick_head") // 准备张嘴说话
-		say(text)
+		live2d.live2dToMotion("flick_head") // 准备张嘴说话
+		sayer.Say(text)
 		return true
 	}).FilterTextIn(textInFiltered)
 
@@ -147,14 +114,13 @@ func main() {
 			log.Println("too long, drop it:", ellipsis(text, 30))
 			resp := tooLongResponses[tooLongRespIndex]
 			tooLongRespIndex = (tooLongRespIndex + 1) % len(tooLongResponses)
-			say(resp)
+			sayer.Say(resp)
 		}
 		return notTooLong
 	}).FilterTextOut(textOutFiltered)
 	textOutFiltered = NewPriorityReduceFilter(*reduceDuration).FilterTextOut(textOutFiltered)
 
 	// out -> (live2d) & (say) & (stdout)
-	live2d := NewLive2DDriver(*live2dDriverAddr)
 
 	for {
 		textOut := <-textOutFiltered
@@ -166,7 +132,7 @@ func main() {
 		fmt.Println(*textOut)
 		live2d.TextOutToLive2DDriver(textOut)
 
-		say(textOut.Content)
+		sayer.Say(textOut.Content)
 
 		if *textOutHttpAddr != "" {
 			if rand.Intn(100) >= *dropHttpOut {
@@ -195,31 +161,6 @@ func ellipsis(s string, n int) string {
 	sb.WriteString(string(r[len(r)-h:]))
 
 	return sb.String()
-}
-
-// live2dToIdle is a hardcoded quick fix to "live2d不说话的时候也在动嘴"
-//
-// TODO: 有空好好写一下。
-//
-//	curl -X POST localhost:9002/live2d -H 'Content-Type: application/json' -d '{"motion": "idle"}'
-func live2dToMotion(motion string) {
-	client := &http.Client{}
-	var data = strings.NewReader(fmt.Sprintf(`{"motion": "%s"}`, motion))
-	req, err := http.NewRequest("POST", *live2dMsgFwd, data)
-	if err != nil {
-		log.Printf("[toIdle] http.NewRequest failed. err=%v", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("[toIdle] http client do request failed. err=%v", err)
-	}
-	defer resp.Body.Close()
-	// bodyText, err := io.ReadAll(resp.Body)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// fmt.Printf("%s\n", bodyText)
 }
 
 var tooLongRespIndex = 0
