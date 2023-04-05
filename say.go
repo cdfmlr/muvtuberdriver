@@ -152,6 +152,8 @@ func (s *sayer) Say(ctx context.Context, text string) (chan AudioPlayStatus, err
 		return ch, nil
 	}
 
+	wg := sync.WaitGroup{} // to avoid panic: send on closed channel
+	wg.Add(1)
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		err = s.auidioController.Wait(ctx, ReportStart(trackID))
@@ -160,6 +162,7 @@ func (s *sayer) Say(ctx context.Context, text string) (chan AudioPlayStatus, err
 		} else {
 			ch <- AudioPlayStatusStart
 		}
+		wg.Done()
 	}()
 
 	go func() {
@@ -170,6 +173,7 @@ func (s *sayer) Say(ctx context.Context, text string) (chan AudioPlayStatus, err
 			cancel() // end the goroutine above
 			ch <- AudioPlayStatusEnd
 		}
+		wg.Wait()
 		close(ch)
 	}()
 

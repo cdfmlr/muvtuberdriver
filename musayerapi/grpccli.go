@@ -50,7 +50,7 @@ func (c *SayerClient) Say(role string, text string) (format string, audio []byte
 	})
 	if err != nil {
 		c.failed++
-		return resp.Format, resp.Audio, err
+		return "", nil, err
 	}
 	c.failed = 0
 	return resp.Format, resp.Audio, nil
