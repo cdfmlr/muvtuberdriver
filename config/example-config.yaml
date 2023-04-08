@@ -1,0 +1,30 @@
+# `go run . -gen_example_config` 来生成最新的、与程序一致的示例配置。
+
+blivedm:
+    server: ws://localhost:12450/api/chat
+    roomid: 123456
+textouthttp:
+    server: ""
+    droprate: 0
+live2d:
+    driver: http://localhost:9004/driver
+    forwarder: http://localhost:9002/live2d
+chatbot:
+    musharing:
+        server: localhost:50051
+    chatgpt:
+        server: localhost:50052
+        configs:
+            - version: 3
+              apikey: sk_xxx
+              initialprompt: hello
+        cooldown: 0
+sayer:
+    server: localhost:51055
+    role: miku
+listen:
+    textinhttp: 0.0.0.0:9010
+    audiocontrollerws: 0.0.0.0:9020
+readdm: true
+reduceduration: 2
+toolongdontsay: 1000

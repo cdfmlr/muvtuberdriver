@@ -7,15 +7,24 @@ import (
 	"log"
 	"math/rand"
 	chatbot2 "muvtuberdriver/chatbot"
+	"muvtuberdriver/config"
 	"muvtuberdriver/model"
 	"net/http"
+	"os"
 	"strings"
 	"time"
+
+	"golang.org/x/exp/slog"
 )
 
-// TODO: 参数已经太长了，必须上配置文件！
+var tipsFlagsToConfig = `目前这是个过度版本：
+我不确定是否要完全弃用 flags 又或者现在新的 config from yaml 机制是否合理，所以两个都保留了。
+我现在只是把原来的 flags 嫁接到了 config 上，测试一个版本，如果 config 机制没有问题，就删掉 flags。
+现在处理的逻辑是这样：如果设置了 -c 则使用配置文件，否则使用 flags。`
 
 var (
+	// ⬇️ deprecated: use config file instead ⬇️
+	// TODO: remove these flags at v0.4.0
 	blivedmServerAddr    = flag.String("blivedm", "ws://localhost:12450/api/chat", "(dial) blivedm server address")
 	roomid               = flag.Int("roomid", 0, "blivedm roomid")
 	live2dDriverAddr     = flag.String("live2ddrv", "http://localhost:9004/driver", "(dail) live2d driver address")
@@ -34,7 +43,14 @@ var (
 	audioControllerAddr = flag.String("audiocontroller", ":9020", "(listen) audio controller ws server address")
 	sayerAddr           = flag.String("sayer", "localhost:51055", "(dial) sayer gRPC server address")
 	sayerRole           = flag.String("sayerrole", "", "role to sayer")
+	// ⬆️ deprecated: use config file instead ⬆️
+
+	genExampleConfig = flag.Bool("gen_example_config", false, "generate example config, print to stdout and exit")
+	configFile       = flag.String("c", "", "read config file (YAML)")
 )
+
+// Config is the global config
+var Config = config.UseConfig()
 
 type chatgptConfig []chatbot2.ChatGPTConfig
 
@@ -49,7 +65,35 @@ func (i *chatgptConfig) Set(value string) error {
 
 func main() {
 	flag.Var(&chatgptConfigs, "chatgpt_config", `chatgpt configs in json: [{"version": 3, "api_key": "sk_xxx", "initial_prompt": "hello"}, ...] `)
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
+		flag.PrintDefaults()
+		fmt.Println("notice:\n", tipsFlagsToConfig)
+	}
 	flag.Parse()
+
+	if *genExampleConfig {
+		c := config.ExampleConfig()
+		c.Write(os.Stdout)
+		return
+	}
+
+	// TODO: remove flags->config logic at v0.4.0
+	if *configFile != "" {
+		slog.Info("Reading config file.", "configFile", *configFile)
+		Config.ReadFromYaml(*configFile)
+	} else {
+		slog.Error("Config file is required, use -c path/to/config.yaml to specify")
+		// os.Exit(1)
+		slog.Warn("Using cli flags is deprecated. Support will be removed in the future (about 2022-05-01, v0.4.0)")
+		flagToConfig()
+	}
+	slog.Info("Config loaded:")
+	Config.Write(log.Writer())
+	// os.Exit(0)
+
+	os.Setenv("COOLDOWN_INTERVAL", fmt.Sprintf("%v", Config.Chatbot.Chatgpt.GetCooldownDuraton()))
+	slog.Info("set COOLDOWN_INTERVAL from config value.", "COOLDOWN_INTERVAL", os.Getenv("COOLDOWN_INTERVAL"))
 
 	textInChan := make(chan *model.TextIn, RecvMsgChanBuf)
 	textOutChan := make(chan *model.TextOut, RecvMsgChanBuf)
@@ -57,30 +101,30 @@ func main() {
 	audioController := NewAudioController()
 	go func() {
 		log.Fatal(http.ListenAndServe(
-			*audioControllerAddr,
+			Config.Listen.AudioControllerWs,
 			audioController.WsHandler()))
 	}()
 
-	live2d := NewLive2DDriver(*live2dDriverAddr, *live2dMsgFwd)
+	live2d := NewLive2DDriver(Config.Live2d.Driver, Config.Live2d.Forwarder)
 
-	sayer := NewAllInOneSayer(*sayerAddr, *sayerRole, audioController, live2d)
+	sayer := NewAllInOneSayer(Config.Sayer.Server, Config.Sayer.Role, audioController, live2d)
 
 	// (dm) & (http) -> in
-	if *roomid != 0 {
-		go TextInFromDm(*roomid, textInChan, WithBlivedmServer(*blivedmServerAddr))
+	if Config.Blivedm.Roomid != 0 {
+		go TextInFromDm(Config.Blivedm.Roomid, textInChan, WithBlivedmServer(Config.Blivedm.Server))
 	}
-	if *textInHttpAddr != "" {
-		go TextInFromHTTP(*textInHttpAddr, "/", textInChan)
+	if Config.Listen.TextInHttp != "" {
+		go TextInFromHTTP(Config.Listen.TextInHttp, "/", textInChan)
 	}
 
 	// in -> filter -> in
 	textInFiltered := textInChan
 	// textInFiltered = ChineseFilter4TextIn.FilterTextIn(textInFiltered)
-	textInFiltered = NewPriorityReduceFilter(*reduceDuration).FilterTextIn(textInFiltered)
+	textInFiltered = NewPriorityReduceFilter(Config.GetReduceDuration()).FilterTextIn(textInFiltered)
 
 	// read dm
 	textInFiltered = TextFilterFunc(func(text string) bool {
-		if !*readDm {
+		if !Config.ReadDm {
 			return true
 		}
 		live2d.live2dToMotion("flick_head") // 准备张嘴说话
@@ -89,11 +133,11 @@ func main() {
 	}).FilterTextIn(textInFiltered)
 
 	// in -> chatbot -> out
-	musharingChatbot, err := chatbot2.NewMusharingChatbot(*musharingChatbotAddr)
+	musharingChatbot, err := chatbot2.NewMusharingChatbot(Config.Chatbot.Musharing.Server)
 	if err != nil {
 		log.Fatal(err)
 	}
-	chatgptChatbot, err := chatbot2.NewChatGPTChatbot(*chatgptAddr, chatgptConfigs)
+	chatgptChatbot, err := chatbot2.NewChatGPTChatbot(Config.Chatbot.Chatgpt.Server, Config.Chatbot.Chatgpt.Configs)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -109,7 +153,7 @@ func main() {
 
 	// too long: no say
 	textOutFiltered = TextFilterFunc(func(text string) bool {
-		notTooLong := len(text) < 800
+		notTooLong := len(text) < Config.TooLongDontSay
 		if !notTooLong { // toooo loooong
 			log.Println("too long, drop it:", ellipsis(text, 30))
 			resp := tooLongResponses[tooLongRespIndex]
@@ -118,7 +162,7 @@ func main() {
 		}
 		return notTooLong
 	}).FilterTextOut(textOutFiltered)
-	textOutFiltered = NewPriorityReduceFilter(*reduceDuration).FilterTextOut(textOutFiltered)
+	textOutFiltered = NewPriorityReduceFilter(Config.GetReduceDuration()).FilterTextOut(textOutFiltered)
 
 	// out -> (live2d) & (say) & (stdout)
 
@@ -134,13 +178,65 @@ func main() {
 
 		sayer.Say(textOut.Content)
 
-		if *textOutHttpAddr != "" {
-			if rand.Intn(100) >= *dropHttpOut {
-				TextOutToHttp(*textOutHttpAddr, textOut)
+		if Config.TextOutHttp.Server != "" {
+			if rand.Intn(100) >= Config.TextOutHttp.DropRate {
+				TextOutToHttp(Config.TextOutHttp.Server, textOut)
 			} else {
 				log.Println("random drop textOut to http")
 			}
 		}
+	}
+}
+
+// Deprecated: use config file instead.
+// flagToConfig read flags and set config
+//
+// TODO: remove this function in v0.4.0
+func flagToConfig() {
+	if *blivedmServerAddr != "" {
+		Config.Blivedm.Server = *blivedmServerAddr
+	}
+	if *roomid != 0 {
+		Config.Blivedm.Roomid = *roomid
+	}
+	if *live2dDriverAddr != "" {
+		Config.Live2d.Driver = *live2dDriverAddr
+	}
+	if *musharingChatbotAddr != "" {
+		Config.Chatbot.Musharing.Server = *musharingChatbotAddr
+	}
+	if *textInHttpAddr != "" {
+		Config.Listen.TextInHttp = *textInHttpAddr
+	}
+	if *textOutHttpAddr != "" {
+		Config.TextOutHttp.Server = *textOutHttpAddr
+	}
+	if *chatgptAddr != "" {
+		Config.Chatbot.Chatgpt.Server = *chatgptAddr
+	}
+	if len([]chatbot2.ChatGPTConfig(chatgptConfigs)) != 0 {
+		Config.Chatbot.Chatgpt.Configs = chatgptConfigs
+	}
+	if *reduceDuration != 0 {
+		Config.ReduceDuration = int(reduceDuration.Seconds())
+	}
+	if *live2dMsgFwd != "" {
+		Config.Live2d.Forwarder = *live2dMsgFwd
+	}
+	if *readDm != false {
+		Config.ReadDm = *readDm
+	}
+	if *dropHttpOut != 0 {
+		Config.TextOutHttp.DropRate = *dropHttpOut
+	}
+	if *audioControllerAddr != "" {
+		Config.Listen.AudioControllerWs = *audioControllerAddr
+	}
+	if *sayerAddr != "" {
+		Config.Sayer.Server = *sayerAddr
+	}
+	if *sayerRole != "" {
+		Config.Sayer.Role = *sayerRole
 	}
 }
 

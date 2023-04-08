@@ -60,6 +60,8 @@ func NewAudioController() AudioController {
 func (c *audioController) WsHandler() http.Handler {
 	return websocket.Handler(func(conn *websocket.Conn) {
 		defer conn.Close()
+		slog.Info("audioController websocket client connected",
+			"remoteAddr", conn.Request().RemoteAddr)
 		// receive
 		go c.recv(conn)
 		// send
