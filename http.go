@@ -3,12 +3,12 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"log"
 	"muvtuberdriver/model"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/exp/slog"
 )
 
 // TextInFromHTTP listen addr, wait TextIn from requests and send them to textInChan:
@@ -33,7 +33,7 @@ func TextInFromHTTP(addr string, routePath string, textInChan chan<- *model.Text
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		log.Printf("TextInFromHTTP: %+v", textIn)
+		slog.Info("[TextInFromHTTP] recv TextIn from HTTP.", "author", textIn.Author, "priority", textIn.Priority, "content", textIn.Content)
 		textInChan <- &textIn
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -46,7 +46,7 @@ func TextOutToHttp(addr string, textOut *model.TextOut) {
 	}
 	j, err := json.Marshal(textOut)
 	if err != nil {
-		log.Println("TextOutToHttp marshal json error", err)
+		slog.Error("[TextOutToHttp] marshal json error", "err", err)
 		return
 	}
 	http.Post(addr, "application/json", bytes.NewReader(j))

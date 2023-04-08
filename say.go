@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"muvtuberdriver/musayerapi"
+	"muvtuberdriver/pkg/ellipsis"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,7 +34,7 @@ type allInOneSayer struct {
 }
 
 func (s *allInOneSayer) Say(text string) error {
-	defer slog.Info("say: done", "text", text)
+	defer slog.Info("[allInOneSayer] say: done.", "text", ellipsis.Centering(text, 20))
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
@@ -58,7 +59,7 @@ func (s *allInOneSayer) Say(text string) error {
 
 	ch, err := s.sayer.Say(ctx, text)
 	if err != nil {
-		slog.Warn("say failed", "err", err, "text", text)
+		slog.Warn("[allInOneSayer] say failed", "err", err, "text", ellipsis.Centering(text, 20))
 		return err
 	}
 	started := false
@@ -71,7 +72,7 @@ func (s *allInOneSayer) Say(text string) error {
 			case AudioPlayStatusStart:
 				started = true
 			case AudioPlayStatusEnd:
-				slog.Info("AudioPlayStatusEnd", "text", text)
+				slog.Info("[allInOneSayer] AudioPlayStatusEnd", "text", ellipsis.Centering(text, 20))
 				s.lostConsistency.Store(0)
 				return nil
 			case AudioPlayStatusErr:

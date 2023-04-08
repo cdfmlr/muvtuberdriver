@@ -104,7 +104,7 @@ func NewChatGPTChatbot(server string, configs []ChatGPTConfig) (Chatbot, error) 
 func (c *ChatGPTChatbot) newSession(config ChatGPTConfig) (sessionId, error) {
 	client, err := c.clientPool.Get()
 	if err != nil {
-		log.Printf("ChatGPTChatbot.newSession get client error: %v", err)
+		log.Printf("ERROR [ChatGPTChatbot] newSession get client error: %v", err)
 		return "", err
 	}
 	defer c.clientPool.Put(client)
@@ -113,7 +113,7 @@ func (c *ChatGPTChatbot) newSession(config ChatGPTConfig) (sessionId, error) {
 	configCopy.InitialPrompt = "" // remove redundant field
 	configJson, err := json.Marshal(configCopy)
 	if err != nil {
-		log.Printf("ChatGPTChatbot.newSession marshal config error: %v", err)
+		log.Printf("ERROR [ChatGPTChatbot] newSession marshal config error: %v", err)
 		return "", err
 	}
 
@@ -125,11 +125,11 @@ func (c *ChatGPTChatbot) newSession(config ChatGPTConfig) (sessionId, error) {
 		})
 
 	if err != nil {
-		log.Printf("ChatGPTChatbot new session error: %v", err)
+		log.Printf("ERROR [ChatGPTChatbot] new session error: %v", err)
 		return "", err
 	}
 
-	log.Printf("ChatGPTChatbot new session: %s", resp.GetSessionId())
+	log.Printf("INFO [ChatGPTChatbot] new session: %s", resp.GetSessionId())
 	return resp.GetSessionId(), nil
 }
 
@@ -160,7 +160,7 @@ func (c *ChatGPTChatbot) Chat(textIn *model.TextIn) (*model.TextOut, error) {
 func (c *ChatGPTChatbot) chat(prompt string) (string, error) {
 	session, err := c.sessionsPool.Get()
 	if err != nil {
-		log.Printf("ChatGPTChatbot.chat get session error: %v", err)
+		log.Printf("ERROR [ChatGPTChatbot] chat get session error: %v", err)
 		return "", err
 	}
 	// defer c.sessionsPool.Put(session)
@@ -170,7 +170,7 @@ func (c *ChatGPTChatbot) chat(prompt string) (string, error) {
 
 	client, err := c.clientPool.Get()
 	if err != nil {
-		log.Printf("ChatGPTChatbot.chat get client error: %v", err)
+		log.Printf("ERROR [ChatGPTChatbot] chat get client error: %v", err)
 		c.sessionsPool.Put(session) // this session can be reused.
 		return "", err
 	}
@@ -182,7 +182,7 @@ func (c *ChatGPTChatbot) chat(prompt string) (string, error) {
 	})
 	if err != nil {
 		session.failed += 1
-		log.Printf("ChatGPTChatbot.chat RPC err: %v. Session will be released after successive errors (%v/3).", err, session.failed)
+		log.Printf("WARN [ChatGPTChatbot] chat RPC err: %v. Session will be released after successive errors (%v/3).", err, session.failed)
 		if session.failed >= 3 { // successive errors, won't reuse this session anymore
 			c.sessionsPool.Release(session)
 		} else {

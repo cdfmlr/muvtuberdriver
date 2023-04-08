@@ -9,9 +9,9 @@ import (
 	chatbot2 "muvtuberdriver/chatbot"
 	"muvtuberdriver/config"
 	"muvtuberdriver/model"
+	"muvtuberdriver/pkg/ellipsis"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"golang.org/x/exp/slog"
@@ -155,7 +155,7 @@ func main() {
 	textOutFiltered = TextFilterFunc(func(text string) bool {
 		notTooLong := len(text) < Config.TooLongDontSay
 		if !notTooLong { // toooo loooong
-			log.Println("too long, drop it:", ellipsis(text, 30))
+			slog.Warn("too long, drop textOut.", "text", ellipsis.Centering(text, 17))
 			resp := tooLongResponses[tooLongRespIndex]
 			tooLongRespIndex = (tooLongRespIndex + 1) % len(tooLongResponses)
 			sayer.Say(resp)
@@ -173,7 +173,12 @@ func main() {
 			continue
 		}
 
-		fmt.Println(*textOut)
+		// fmt.Println(*textOut)
+		slog.Info("[textOut]",
+			"author", textOut.Author,
+			"priority", textOut.Priority,
+			"content", textOut.Content)
+
 		live2d.TextOutToLive2DDriver(textOut)
 
 		sayer.Say(textOut.Content)
@@ -182,7 +187,7 @@ func main() {
 			if rand.Intn(100) >= Config.TextOutHttp.DropRate {
 				TextOutToHttp(Config.TextOutHttp.Server, textOut)
 			} else {
-				log.Println("random drop textOut to http")
+				slog.Info("[TextOutHttp] random drop textOut.")
 			}
 		}
 	}
@@ -238,25 +243,6 @@ func flagToConfig() {
 	if *sayerRole != "" {
 		Config.Sayer.Role = *sayerRole
 	}
-}
-
-// ellipsis long s -> "front...end"
-func ellipsis(s string, n int) string {
-	r := []rune(s)
-
-	if len(r) <= n {
-		return s
-	}
-
-	n -= 3
-	h := n / 2
-
-	var sb strings.Builder
-	sb.WriteString(string(r[:h]))
-	sb.WriteString("...")
-	sb.WriteString(string(r[len(r)-h:]))
-
-	return sb.String()
 }
 
 var tooLongRespIndex = 0

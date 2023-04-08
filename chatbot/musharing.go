@@ -65,7 +65,7 @@ func NewMusharingChatbot(server string) (Chatbot, error) {
 		Prompt: "ping",
 	})
 	if err != nil {
-		log.Printf("NewMusharingChatbot ping failed: %v", err)
+		log.Printf("ERROR NewMusharingChatbot ping failed: %v", err)
 		return nil, err
 	}
 

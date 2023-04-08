@@ -41,11 +41,11 @@ func (c *Cooldown) setupInterval() {
 	if envInterval != "" {
 		interval, err := time.ParseDuration(envInterval)
 		if err == nil {
-			log.Printf("use cooldown interval from env: %v", interval)
+			log.Printf("INFO [Cooldown] use cooldown interval from env: %v", interval)
 			c.Interval = interval
 			return
 		}
 	}
-	log.Printf("cooldown interval missing, use default: %v", DefaultCooldownInterval)
+	log.Printf("WARN [Cooldown] cooldown interval missing, use default: %v", DefaultCooldownInterval)
 	c.Interval = DefaultCooldownInterval
 }

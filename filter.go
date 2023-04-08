@@ -1,12 +1,14 @@
 package main
 
 import (
-	"log"
 	"muvtuberdriver/model"
+	"muvtuberdriver/pkg/ellipsis"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
+
+	"golang.org/x/exp/slog"
 )
 
 type TextInFilter interface {
@@ -177,7 +179,10 @@ func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *model.Text) {
 		}
 
 		t.Priority = model.PriorityHighest // 消息少，提权，以求高质量 Chatbot 回复
-		log.Printf("PriorityReduceFilter outputMaxPriorityOnes [Priority -> Highest]: %+v", t)
+		slog.Info("[PriorityReduceFilter] outputMaxPriorityOne boost Priority -> Highest",
+			"author", t.Author,
+			"content", ellipsis.Centering(t.Content, 17),
+			"priority", t.Priority)
 		chOut <- t
 		return
 	default:
@@ -205,7 +210,8 @@ func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *model.Text) {
 	if maxPriority == model.PriorityHighest {
 		// 如果这些消息的 Priority >= PriorityHighest 则输出所有这些消息；
 		for _, t := range choosen {
-			log.Printf("PriorityReduceFilter outputMaxPriorityOnes: %+v", t)
+			slog.Info("[PriorityReduceFilter] outputMaxPriorityOne with PriorityHighest",
+				"author", t.Author, "content", ellipsis.Centering(t.Content, 17), "priority", t.Priority)
 			chOut <- t
 		}
 	} else {
@@ -216,7 +222,8 @@ func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *model.Text) {
 		}
 
 		one := choosen[maxLenIdx]
-		log.Printf("PriorityReduceFilter outputMaxPriorityOnes: %+v", one)
+		slog.Info("[PriorityReduceFilter] outputMaxPriorityOne with maxLen",
+			"author", one.Author, "content", ellipsis.Centering(one.Content, 17), "priority", one.Priority)
 		chOut <- one
 	}
 }

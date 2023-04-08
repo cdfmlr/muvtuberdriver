@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"muvtuberdriver/model"
 	"reflect"
 	"time"
 
 	"github.com/mitchellh/mapstructure"
+	"golang.org/x/exp/slog"
 	"golang.org/x/net/websocket"
 )
 
@@ -129,20 +129,20 @@ func chatClient(ws *websocket.Conn, recvMsgCh chan<- string) {
 	heartbeat := time.NewTicker(blivedmHeartbeatInterval)
 	defer heartbeat.Stop()
 
-	log.Println("[dm] chatClient started")
+	slog.Info("[dm] chatClient started")
 
 LOOP:
 	for {
 		select {
 		case <-heartbeat.C:
 			if err := websocket.Message.Send(ws, blivedmHeartbeatMessage); err != nil {
-				log.Printf("[dm] chatClient send heartbeat to blivedm failed: break the LOOP. err=%v", err)
+				slog.Error("[dm] chatClient send heartbeat to blivedm failed: break the LOOP.", "err", err)
 				break LOOP
 			}
 		default:
 			var msg string
 			if err := websocket.Message.Receive(ws, &msg); err != nil {
-				log.Printf("[dm] chatClient recv message from blivedm failed: break the LOOP. err=%v", err)
+				slog.Error("[dm] chatClient recv message from blivedm failed: break the LOOP.", "err", err)
 				break LOOP
 			}
 			if msg == blivedmHeartbeatMessage { // a quick but unqualified filter
@@ -169,7 +169,7 @@ func newBlivedmClient(roomid int, opts ...BlivedmClientOption) (recvMsgCh <-chan
 
 	ws, err := websocket.Dial(o.BlivedmServer, "", o.BlivedmWsOrigin)
 	if err != nil {
-		log.Println("websocket dial error:", err)
+		slog.Error("websocket dial error.", "err", err)
 		return nil, err
 	}
 
@@ -292,10 +292,10 @@ func superChatMessageHandler(message *blivedmMessage) (*model.TextIn, error) {
 func TextInFromDm(roomid int, textIn chan<- *model.TextIn, opts ...BlivedmClientOption) (err error) {
 	retryAt, retryInterval := time.Now(), time.Second
 	for {
-		log.Printf("[dm] TextInFromDm: create newBlivedmClient to room %d", roomid)
+		slog.Info("[dm] TextInFromDm: create newBlivedmClient to room.", "roomid", roomid)
 		recvMsgCh, err := newBlivedmClient(roomid, opts...)
 		if err != nil {
-			log.Printf("[dm] TextInFromDm: newBlivedmClient failed: %v", err)
+			slog.Error("[dm] TextInFromDm: newBlivedmClient failed.", "err", err)
 			goto RETRY
 		}
 
@@ -310,18 +310,20 @@ func TextInFromDm(roomid int, textIn chan<- *model.TextIn, opts ...BlivedmClient
 			case blivedmCmdAddText:
 				t, err := textMessageHandler(message)
 				if err != nil {
-					fmt.Printf("textMessageHandler(%s) error: %v\n", msg, err)
+					slog.Warn("[dm] textMessageHandler error.", "msg", msg, "err", err)
 					continue
 				}
-				log.Printf("[dm] TextInFromDm: %s", t.Content)
+				slog.Info("[dm] TextInFromDm: ",
+					"author", t.Author, "priority", t.Priority, "content", t.Content)
 				textIn <- t
 			case blivedmCmdAddSuperChat:
 				t, err := superChatMessageHandler(message)
 				if err != nil {
-					fmt.Printf("[dm] superChatMessageHandler(%s) error: %v\n", msg, err)
+					slog.Error("[dm] superChatMessageHandlererror.", "msg", msg, "err", err)
 					continue
 				}
-				log.Printf("[dm] TextInFromDm [SC]: %s", t.Content)
+				slog.Info("[dm] TextInFromDm [SC]",
+					"author", t.Author, "priority", t.Priority, "content", t.Content)
 				textIn <- t
 			}
 		}
@@ -333,7 +335,7 @@ func TextInFromDm(roomid int, textIn chan<- *model.TextIn, opts ...BlivedmClient
 		} else {
 			retryInterval = time.Second
 		}
-		log.Printf("[dm] TextInFromDm: recvMsgCh closed => BlivedmClient down. Try to renew in %v...", retryInterval)
+		slog.Warn(fmt.Sprintf("[dm] TextInFromDm: recvMsgCh closed => BlivedmClient down. Try to renew in %v...", retryInterval))
 		time.Sleep(retryInterval)
 		retryAt = time.Now()
 	}

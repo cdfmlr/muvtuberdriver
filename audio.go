@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"muvtuberdriver/pkg/ellipsis"
 	"muvtuberdriver/pkg/wsforwarder"
 	"net/http"
 	"strings"
@@ -124,6 +125,9 @@ func (c *audioController) sendPlayCmd(cmd string, track *Track) error {
 		return err
 	}
 
+	slog.Info("[audioController] sendPlayCmd to audioview",
+		"cmd", cmd, "track", ellipsis.Ending(track.ID, 10))
+
 	// send the command
 	c.forwarder.SendMessage(j)
 
@@ -193,7 +197,10 @@ func (c *audioController) handleReport(msg *AudioMessage) {
 		slog.Error("report status is not start or end", "status", report.Status)
 		return
 	}
-	slog.Info("[audioController] recv report successfully", "report", report)
+
+	slog.Info("[audioController] recv report from audioview.",
+		"ID", ellipsis.Ending(report.ID, 10), "Status", report.Status)
+
 	c.reports.Store(report.String(), time.Now())
 }
 
