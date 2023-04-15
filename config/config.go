@@ -23,9 +23,9 @@ type config struct {
 
 	// ⬇️ 杂项
 
-	ReadDm         bool // 复读评论
-	ReduceDuration int  // 评论筛选时间间隔 (秒)
-	TooLongDontSay int  // 文本太长了，不调用语音合成 (字符数 len(string))
+	ReadDm         bool          // 复读评论
+	ReduceDuration int           // 评论筛选时间间隔 (秒)
+	TooLong        TooLongConfig // 文本太长了，弃之，随机抱怨
 }
 
 // BlivedmConfig 获取弹幕的配置
@@ -59,7 +59,7 @@ type MusharingChatbotConfig struct {
 }
 
 // IsEnabled 检查是否启用 & 可用
-// 
+//
 // 返回值: 是否启用（true 则启用） & 是否可用 (err == nil 时可用)
 func (c *MusharingChatbotConfig) IsEnabledAndValid() (enabled bool, err error) {
 	if c.Disabled {
@@ -110,6 +110,12 @@ type SayerConfig struct {
 type ListenConfig struct {
 	TextInHttp        string // textIn http server address: 从 http 接收文本输入
 	AudioControllerWs string // audio controller ws server address: audioview 通过 websocket 与这个程序通信
+}
+
+// TooLongConfig 文本太长了，弃之，随机抱怨
+type TooLongConfig struct {
+	MaxWords int      // 文本太长了，不调用语音合成 (中文字符数 + 英文单词数)
+	Quibbles []string // 文本太长了，随机回复的话
 }
 
 func (c *config) Read(src io.Reader) error {
@@ -164,44 +170,51 @@ func UseConfig() *config {
 func ExampleConfig() config {
 	c := config{
 		Blivedm: BlivedmConfig{
-			Server: "ws://localhost:12450/api/chat",
-			Roomid: 123456,
+			Server: "ws://blivechat:12450/api/chat",
+			Roomid: 26949229,
 		},
 		TextOutHttp: TextOutHttpConfig{
 			Server:   "",
 			DropRate: 0,
 		},
 		Live2d: Live2dConfig{
-			Driver:    "http://localhost:9004/driver",
-			Forwarder: "http://localhost:9002/live2d",
+			Driver:    "http://live2ddriver:9004/driver",
+			Forwarder: "http://live2ddriver:9002/live2d",
 		},
 		Chatbot: ChatbotConfig{
 			Musharing: MusharingChatbotConfig{
-				Server: "localhost:50051",
+				Server: "musharing_chatbot:50051",
 			},
 			Chatgpt: ChatgptChatbotConfig{
-				Server: "localhost:50052",
+				Server: "chatgpt_chatbot:50052",
 				Configs: []chatbot2.ChatGPTConfig{
 					{
 						Version:       3,
 						ApiKey:        "sk_xxx",
-						InitialPrompt: "hello",
+						InitialPrompt: "you are muli, an AI VTuber live streaming.",
 					},
 				},
-				Cooldown: 0,
+				Cooldown: 15,
 			},
 		},
 		Sayer: SayerConfig{
-			Server: "localhost:51055",
+			Server: "externalsayer:50010",
 			Role:   "miku",
 		},
 		Listen: ListenConfig{
-			TextInHttp:        "0.0.0.0:9010",
-			AudioControllerWs: "0.0.0.0:9020",
+			TextInHttp:        "0.0.0.0:51080",
+			AudioControllerWs: "0.0.0.0:51081",
 		},
 		ReadDm:         true,
-		ReduceDuration: 2,
-		TooLongDontSay: 1000,
+		ReduceDuration: 5,
+		TooLong: TooLongConfig{
+			MaxWords: 500,
+			Quibbles: []string{
+				"太长了，不想说。",
+				"禁則事項です。",
+				"爬。",
+			},
+		},
 	}
 
 	return c

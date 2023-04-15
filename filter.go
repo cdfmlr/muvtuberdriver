@@ -258,3 +258,82 @@ func maxLenOfTextInSlice(slice []*model.Text) (maxLen int, index int) {
 	}
 	return maxLen, index
 }
+
+type TooLongFilter struct {
+	MaxWords     int
+	quibbleIndex int
+	quibbles     []string
+}
+
+func NewTooLongFilter(maxWords int, quibbles []string) *TooLongFilter {
+	return &TooLongFilter{
+		MaxWords:     maxWords,
+		quibbleIndex: 0,
+		quibbles:     quibbles,
+	}
+}
+
+// TextFilterFunc returns a TextFilterFunc that filters out too long text.
+// If the text is too long, the callback will be called with the text and a quibble.
+//
+// the callback arguments can be nil.
+func (t TooLongFilter) TextFilterFunc(callback func(text, quibble *string)) TextFilterFunc {
+	return TextFilterFunc(func(text string) bool {
+		if !tooLong(text, t.MaxWords) {
+			return true
+		}
+
+		var quibble *string
+		if len(t.quibbles) > 0 {
+			quibble = &t.quibbles[t.quibbleIndex]
+			t.quibbleIndex = (t.quibbleIndex + 1) % len(t.quibbles)
+		}
+		slog.Warn("[TooLongFilter] text is too long, filtered out",
+			"text", ellipsis.Centering(text, 17),
+			"quibble", quibble,
+		)
+		if callback != nil {
+			callback(&text, quibble)
+		}
+		return false
+	})
+}
+
+// tooLong counts the number of words in the given text
+// and returns true if the number of words is greater than maxWords (>).
+//
+// Supports mixed Chinese (in chars) and English (in words).
+//
+// coupled wc & len check: for performance.
+func tooLong(text string, maxWords int) bool {
+	// evidently not too long
+	if len(text) <= maxWords {
+		return false
+	}
+
+	// count the number of words
+	// - English words ( Latin ) are separated by spaces
+	// - Chinese words is counted by the number of chars
+	// - Punctuation is counted as a word
+	words := 0
+	lastIsLatin := false
+	for _, r := range text {
+		if !unicode.Is(unicode.Latin, r) {
+			lastIsLatin = false
+			words++
+		} else if unicode.IsSpace(r) {
+			lastIsLatin = false
+			words++
+		} else {
+			lastIsLatin = true
+		}
+		if words > maxWords {
+			return true
+		}
+	}
+
+	if lastIsLatin {
+		words++
+	}
+	return words > maxWords
+}
