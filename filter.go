@@ -210,6 +210,13 @@ func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *model.Text) {
 	if maxPriority == model.PriorityHighest {
 		// 如果这些消息的 Priority >= PriorityHighest 则输出所有这些消息；
 		for _, t := range choosen {
+			if t == nil {
+				slog.Warn("[PriorityReduceFilter] outputMaxPriorityOne with PriorityHighest, but t is nil",
+					"wtf", "为什么会空啊，匪夷所思啊",
+					"action", "continue",
+					"choosen", choosen)
+				continue
+			}
 			slog.Info("[PriorityReduceFilter] outputMaxPriorityOne with PriorityHighest",
 				"author", t.Author, "content", ellipsis.Centering(t.Content, 17), "priority", t.Priority)
 			chOut <- t
@@ -222,6 +229,14 @@ func (f *PriorityReduceFilter) outputMaxPriorityOnes(chOut chan<- *model.Text) {
 		}
 
 		one := choosen[maxLenIdx]
+		if one == nil {
+			slog.Warn("[PriorityReduceFilter] outputMaxPriorityOne with maxLen, but that one is nil",
+				"wtf", "为什么会空啊，匪夷所思啊",
+				"action", "return",
+				"maxLenIdx", maxLenIdx,
+				"choosen", choosen)
+			return
+		}
 		slog.Info("[PriorityReduceFilter] outputMaxPriorityOne with maxLen",
 			"author", one.Author, "content", ellipsis.Centering(one.Content, 17), "priority", one.Priority)
 		chOut <- one
