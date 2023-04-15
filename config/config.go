@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"io"
 	chatbot2 "muvtuberdriver/chatbot"
 	"os"
@@ -53,7 +54,23 @@ type ChatbotConfig struct {
 
 // MusharingChatbotConfig chatterbot 配置
 type MusharingChatbotConfig struct {
-	Server string // musharing chatbot api server (gRPC) address
+	Server   string // musharing chatbot api server (gRPC) address
+	Disabled bool   // 是否禁用
+}
+
+// IsEnabled 检查是否启用 & 可用
+// 
+// 返回值: 是否启用（true 则启用） & 是否可用 (err == nil 时可用)
+func (c *MusharingChatbotConfig) IsEnabledAndValid() (enabled bool, err error) {
+	if c.Disabled {
+		enabled = false
+		return enabled, nil
+	}
+	enabled = true
+	if c.Server == "" {
+		err = errors.New("musharing chatbot server address is empty")
+	}
+	return enabled, err
 }
 
 // ChatgptChatbotConfig chatgpt 配置
@@ -61,6 +78,22 @@ type ChatgptChatbotConfig struct {
 	Server   string                   // chatgpt api server (gRPC) address
 	Configs  []chatbot2.ChatGPTConfig // chatgpt configs in json: [{"version": 3, "api_key": "sk_xxx", "initial_prompt": "hello"}, ...]
 	Cooldown int                      // chatgpt cooldown time (seconds)
+	Disabled bool                     // 是否禁用
+}
+
+func (c *ChatgptChatbotConfig) IsEnabledAndValid() (enabled bool, err error) {
+	if c.Disabled {
+		enabled = false
+		return enabled, nil
+	}
+	enabled = true
+	if c.Server == "" {
+		err = errors.New("chatgpt chatbot server address is empty")
+	}
+	if len(c.Configs) == 0 {
+		err = errors.New("chatgpt chatbot configs is empty")
+	}
+	return enabled, err
 }
 
 func (c *ChatgptChatbotConfig) GetCooldownDuraton() time.Duration {
