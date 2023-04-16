@@ -248,7 +248,9 @@ func initMusharingChatbot() (chatbot2.Chatbot, error) {
 //
 // This function directly reads the global Config.
 func initChatgptChatbot() (chatbot2.Chatbot, error) {
-	enabled, err := Config.Chatbot.Chatgpt.IsEnabledAndValid()
+	cfg := Config.Chatbot.Chatgpt
+
+	enabled, err := cfg.IsEnabledAndValid()
 	if !enabled {
 		slog.Info("chatgpt chatbot is disabled")
 		return nil, nil
@@ -256,7 +258,10 @@ func initChatgptChatbot() (chatbot2.Chatbot, error) {
 	if err != nil {
 		return nil, err
 	}
-	chatgptChatbot, err := chatbot2.NewChatGPTChatbot(Config.Chatbot.Chatgpt.Server, Config.Chatbot.Chatgpt.Configs)
+
+	chatgptChatbot, err := chatbot2.NewChatGPTChatbot(
+		cfg.Server, cfg.GetCooldownDuraton(), cfg.Configs...)
+
 	return chatgptChatbot, err
 }
 
