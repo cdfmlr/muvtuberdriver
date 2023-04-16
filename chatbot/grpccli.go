@@ -370,6 +370,10 @@ type SessionClientsPool struct {
 //
 // Multiple configs can be given, and they will be used in a round-robin fashion.
 func NewSessionClientsPool(addr string, configs ...ChatbotConfig) (*SessionClientsPool, error) {
+	if configs == nil {
+		// configs = []ChatbotConfig{NoChatbotConfig{}}
+		return nil, errors.New("configs is nil")
+	}
 	ccsp := &SessionClientsPool{
 		configs: configs,
 	}
