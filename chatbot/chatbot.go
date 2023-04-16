@@ -1,6 +1,7 @@
 package chatbot
 
 import (
+	"errors"
 	"log"
 	"muvtuberdriver/model"
 	"muvtuberdriver/pkg/ellipsis"
@@ -69,7 +70,7 @@ func (p *PrioritizedChatbot) Chat(textIn *model.TextIn) (*model.TextOut, error) 
 		}
 	}
 
-	return nil, nil
+	return nil, errors.New("no chatbot available")
 }
 
 func NewPrioritizedChatbot(chatbots map[model.Priority]Chatbot) Chatbot {
