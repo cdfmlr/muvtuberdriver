@@ -5,12 +5,16 @@ go 1.19
 require (
 	github.com/gin-gonic/gin v1.8.2
 	github.com/mitchellh/mapstructure v1.5.0
-	golang.org/x/net v0.7.0
-	google.golang.org/grpc v1.53.0
-	google.golang.org/protobuf v1.28.1
+	golang.org/x/net v0.8.0
+	google.golang.org/grpc v1.55.0
+	google.golang.org/protobuf v1.30.0
 )
 
-require gopkg.in/yaml.v3 v3.0.1
+require (
+	github.com/cdfmlr/pool v0.0.1
+	github.com/murchinroom/sayerapigo v0.0.0-20230526082243-ff8cadafd4c3
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 require (
 	github.com/gin-contrib/sse v0.1.0 // indirect
@@ -18,7 +22,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/go-playground/validator/v10 v10.11.1 // indirect
 	github.com/goccy/go-json v0.9.11 // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/mattn/go-isatty v0.0.16 // indirect
@@ -27,9 +31,9 @@ require (
 	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
 	github.com/ugorji/go/codec v1.2.7 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
-	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
-	golang.org/x/sys v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
-	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f // indirect
+	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
+	golang.org/x/sys v0.6.0 // indirect
+	golang.org/x/text v0.8.0 // indirect
+	google.golang.org/genproto v0.0.0-20230306155012-7f2fa6fef1f4 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

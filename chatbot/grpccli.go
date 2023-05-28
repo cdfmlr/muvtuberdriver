@@ -10,7 +10,7 @@ import (
 	chatbotv2 "muvtuberdriver/chatbot/proto"
 	"muvtuberdriver/model"
 	"muvtuberdriver/pkg/ellipsis"
-	"muvtuberdriver/pkg/pool"
+	"github.com/cdfmlr/pool"
 
 	"golang.org/x/exp/slog"
 	"google.golang.org/grpc"

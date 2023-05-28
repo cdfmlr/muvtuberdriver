@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"muvtuberdriver/musayerapi"
+	musayerapi "github.com/murchinroom/sayerapigo"
 	"muvtuberdriver/pkg/ellipsis"
 	"strings"
 	"sync"
