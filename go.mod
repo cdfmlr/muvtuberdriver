@@ -13,7 +13,7 @@ require (
 require (
 	github.com/cdfmlr/ellipsis v0.0.1
 	github.com/cdfmlr/pool v0.0.1
-	github.com/murchinroom/sayerapigo v0.0.1
+	github.com/murchinroom/sayerapigo v0.0.2
 	gopkg.in/yaml.v3 v3.0.1
 )
 
