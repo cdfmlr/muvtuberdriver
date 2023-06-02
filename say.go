@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	musayerapi "github.com/murchinroom/sayerapigo"
-	"muvtuberdriver/pkg/ellipsis"
+	"github.com/cdfmlr/ellipsis"
 	"strings"
 	"sync"
 	"sync/atomic"

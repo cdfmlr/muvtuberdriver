@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"muvtuberdriver/pkg/ellipsis"
+	"github.com/cdfmlr/ellipsis"
 	"muvtuberdriver/pkg/wsforwarder"
 	"net/http"
 	"strings"

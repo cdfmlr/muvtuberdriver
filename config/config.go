@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 	chatbot2 "muvtuberdriver/chatbot"
-	"muvtuberdriver/pkg/ellipsis"
+	"github.com/cdfmlr/ellipsis"
 	"os"
 	"time"
 

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"log"
 	"muvtuberdriver/model"
-	"muvtuberdriver/pkg/ellipsis"
+	"github.com/cdfmlr/ellipsis"
 )
 
 type Chatbot interface {
