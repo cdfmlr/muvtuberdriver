@@ -1,8 +1,8 @@
 package main
 
 import (
-	"muvtuberdriver/model"
 	"github.com/cdfmlr/ellipsis"
+	"muvtuberdriver/model"
 	"strings"
 	"sync"
 	"time"

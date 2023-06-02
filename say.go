@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"errors"
-	musayerapi "github.com/murchinroom/sayerapigo"
 	"github.com/cdfmlr/ellipsis"
+	musayerapi "github.com/murchinroom/sayerapigo"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -34,7 +34,8 @@ type allInOneSayer struct {
 }
 
 func (s *allInOneSayer) Say(text string) error {
-	defer slog.Info("[allInOneSayer] say: done.", "text", ellipsis.Centering(text, 20))
+	logger := slog.With("text", ellipsis.Centering(text, 15))
+
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
@@ -59,7 +60,7 @@ func (s *allInOneSayer) Say(text string) error {
 
 	ch, err := s.sayer.Say(ctx, text)
 	if err != nil {
-		slog.Warn("[allInOneSayer] say failed", "err", err, "text", ellipsis.Centering(text, 20))
+		logger.Warn("[allInOneSayer] say failed (tts OR initial the audio playback task)", "err", err)
 		return err
 	}
 	started := false
@@ -70,24 +71,30 @@ func (s *allInOneSayer) Say(text string) error {
 		case r := <-ch:
 			switch r {
 			case AudioPlayStatusStart:
+				logger.Info("[allInOneSayer] AudioPlayStatusStart")
 				started = true
 			case AudioPlayStatusEnd:
-				slog.Info("[allInOneSayer] AudioPlayStatusEnd", "text", ellipsis.Centering(text, 20))
+				logger.Info("[allInOneSayer] AudioPlayStatusEnd: Done!")
 				s.lostConsistency.Store(0)
+
 				return nil
 			case AudioPlayStatusErr:
+				logger.Warn("[allInOneSayer] AudioPlayStatusErr: Failed!")
 				s.lostConsistency.Add(1)
+
 				return errors.New("AudioPlayStatusErr")
 			}
 		case <-startTimeout:
+			// 半天没开始说，干啥呢，直接认为出问题了，不说了。
 			if !started {
-				cancel() // 半天没开始说，干啥呢，直接认为出问题了，不说了。
+				logger.Warn("[allInOneSayer] start playing audio timeout: Canceling...")
+				cancel() // cancel 导致：会在清理完底层工作后，走上面的 AudioPlayStatusErr case 退出
 				s.lostConsistency.Add(1)
 			}
 			// 已经开始了就等它说：再等 270 秒
 		}
 	}
-	return nil
+	// never reach here
 }
 
 func NewAllInOneSayer(addr string, role string, audioController AudioController, live2dDriver Live2DDriver) Sayer {
@@ -141,17 +148,23 @@ func new_sayer(addr string, role string, audioController AudioController) intern
 //   - cancel the waiting (not the say job, the command always sent)
 //   - pass PlayAt value to the Track.
 func (s *sayer) Say(ctx context.Context, text string) (chan AudioPlayStatus, error) {
+	logger := slog.With("text", ellipsis.Centering(text, 9))
+
 	ch := make(chan AudioPlayStatus, 2)
 
 	trackID, err := s.say(ctx, text)
 	if err != nil {
+		logger.Error("[sayer] say (TTS & PLAY) failed", "err", err)
 		return nil, err
 	}
 	if len(trackID) == 0 {
+		logger.Error("[sayer] say (TTS & PLAY) got an unexpected empty trackID with no err")
 		ch <- AudioPlayStatusStart
 		ch <- AudioPlayStatusEnd
 		return ch, nil
 	}
+
+	logger = logger.With("trackID", trackID)
 
 	wg := sync.WaitGroup{} // to avoid panic: send on closed channel
 	wg.Add(1)
@@ -159,8 +172,10 @@ func (s *sayer) Say(ctx context.Context, text string) (chan AudioPlayStatus, err
 	go func() {
 		err = s.auidioController.Wait(ctx, ReportStart(trackID))
 		if err != nil {
+			logger.Error("[sayer] wait START report from audioview failed", "err", err)
 			ch <- AudioPlayStatusErr
 		} else {
+			logger.Info("[sayer] got audioview report: playing started")
 			ch <- AudioPlayStatusStart
 		}
 		wg.Done()
@@ -169,8 +184,10 @@ func (s *sayer) Say(ctx context.Context, text string) (chan AudioPlayStatus, err
 	go func() {
 		err = s.auidioController.Wait(ctx, ReportEnd(trackID))
 		if err != nil {
+			logger.Error("[sayer] wait END report from audioview failed", "err", err)
 			ch <- AudioPlayStatusErr
 		} else {
+			logger.Info("[sayer] got audioview report: playing ended")
 			cancel() // end the goroutine above
 			ch <- AudioPlayStatusEnd
 		}
