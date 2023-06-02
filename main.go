@@ -23,6 +23,8 @@ var tipsFlagsToConfig = `目前这是个过度版本：
 现在处理的逻辑是这样：如果设置了 -c 则使用配置文件，否则使用 flags。`
 
 var (
+	dryRun = flag.Bool("dryrun", false, "prints config and exit.")
+
 	// ⬇️ deprecated: use config file instead ⬇️
 	// TODO: remove these flags at v0.4.0
 	blivedmServerAddr    = flag.String("blivedm", "ws://localhost:12450/api/chat", "(dial) blivedm server address")
@@ -88,9 +90,13 @@ func main() {
 		slog.Warn("Using cli flags is deprecated. Support will be removed in the future (about 2022-05-01, v0.4.0)")
 		flagToConfig()
 	}
+
 	slog.Info("Config loaded:")
-	Config.Write(log.Writer())
-	// os.Exit(0)
+	Config.DesensitizedCopy().Write(log.Writer())
+
+	if *dryRun {
+		os.Exit(0)
+	}
 
 	os.Setenv("COOLDOWN_INTERVAL", fmt.Sprintf("%v", Config.Chatbot.Chatgpt.GetCooldownDuraton()))
 	slog.Info("set COOLDOWN_INTERVAL from config value.", "COOLDOWN_INTERVAL", os.Getenv("COOLDOWN_INTERVAL"))

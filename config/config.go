@@ -1,9 +1,11 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	chatbot2 "muvtuberdriver/chatbot"
+	"muvtuberdriver/pkg/ellipsis"
 	"os"
 	"time"
 
@@ -124,6 +126,34 @@ func (c *config) Read(src io.Reader) error {
 
 func (c *config) Write(dst io.Writer) error {
 	return yaml.NewEncoder(dst).Encode(&c)
+}
+
+// DesensitizedCopy desensitize the config. 
+// Returns a pointer to the desensitized config copy.
+// 
+// If it's failed to make it, it panics.
+//
+// Avoid keys being printed to the log.
+func (c *config) DesensitizedCopy() *config {
+    var cCopy config
+    
+    // deep copy
+    buf := bytes.NewBuffer(nil)
+    if err := yaml.NewEncoder(buf).Encode(&c); err != nil {
+        panic(err)
+    }
+    if err := yaml.NewDecoder(buf).Decode(&cCopy); err != nil {
+        panic(err)
+    }
+
+    // OpenAI API Key
+    chatgptConfigs := &cCopy.Chatbot.Chatgpt.Configs  // a shorthand for easy typing
+    for i := 0; i < len(*chatgptConfigs); i++ {
+        apiKey := &((*chatgptConfigs)[i].ApiKey) // another shorthand
+        *apiKey = ellipsis.Centering(*apiKey, 9)
+    }
+
+    return &cCopy
 }
 
 // ReadFromYaml 读取配置文件
