@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/cdfmlr/ellipsis"
-	musayerapi "github.com/murchinroom/sayerapigo"
+	"muvtuberdriver/audio"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/cdfmlr/ellipsis"
+	musayerapi "github.com/murchinroom/sayerapigo"
 	"golang.org/x/exp/slog"
 )
 
@@ -53,9 +54,9 @@ func (s *allInOneSayer) Say(text string) error {
 	fails := s.lostConsistency.Load()
 	switch {
 	case fails > 3:
-		ctx = context.WithValue(ctx, "playAt", PlayAtResetNow)
+		ctx = context.WithValue(ctx, "playAt", audio.PlayAtResetNow)
 	case fails > 0:
-		ctx = context.WithValue(ctx, "playAt", PlayAtResetNext)
+		ctx = context.WithValue(ctx, "playAt", audio.PlayAtResetNext)
 	}
 
 	ch, err := s.sayer.Say(ctx, text)
@@ -70,15 +71,15 @@ func (s *allInOneSayer) Say(text string) error {
 		select {
 		case r := <-ch:
 			switch r {
-			case AudioPlayStatusStart:
+			case audio.PlayStatusStart:
 				logger.Info("[allInOneSayer] AudioPlayStatusStart")
 				started = true
-			case AudioPlayStatusEnd:
+			case audio.PlayStatusEnd:
 				logger.Info("[allInOneSayer] AudioPlayStatusEnd: Done!")
 				s.lostConsistency.Store(0)
 
 				return nil
-			case AudioPlayStatusErr:
+			case audio.PlayStatusErr:
 				logger.Warn("[allInOneSayer] AudioPlayStatusErr: Failed!")
 				s.lostConsistency.Add(1)
 
@@ -97,7 +98,7 @@ func (s *allInOneSayer) Say(text string) error {
 	// never reach here
 }
 
-func NewAllInOneSayer(addr string, role string, audioController AudioController, live2dDriver Live2DDriver) Sayer {
+func NewAllInOneSayer(addr string, role string, audioController audio.Controller, live2dDriver Live2DDriver) Sayer {
 	return &allInOneSayer{
 		sayer:        new_sayer(addr, role, audioController),
 		live2dDriver: live2dDriver,
@@ -113,7 +114,7 @@ type internalSayer interface {
 	// returned chan reports the status of the audio playing (start, end) and
 	// it will be closed when the audioview finished playing the audio.
 	// ctx is used to cancel the waiting (not the say job, the command always sent)
-	Say(ctx context.Context, text string) (chan AudioPlayStatus, error)
+	Say(ctx context.Context, text string) (chan audio.PlayStatus, error)
 }
 
 // sayer is an internal sayer implementation.
@@ -124,10 +125,10 @@ type internalSayer interface {
 type sayer struct {
 	cli              *musayerapi.SayerClientPool
 	role             string
-	auidioController AudioController // XXX: use chan instead of injecting AudioController
+	auidioController audio.Controller // XXX: use chan instead of injecting AudioController
 }
 
-func new_sayer(addr string, role string, audioController AudioController) internalSayer {
+func new_sayer(addr string, role string, audioController audio.Controller) internalSayer {
 	pool, err := musayerapi.NewSayerClientPool(addr, 8)
 	if err != nil {
 		panic(err) // NewSayerClientPool should not fail
@@ -147,10 +148,10 @@ func new_sayer(addr string, role string, audioController AudioController) intern
 // ctx is used to:
 //   - cancel the waiting (not the say job, the command always sent)
 //   - pass PlayAt value to the Track.
-func (s *sayer) Say(ctx context.Context, text string) (chan AudioPlayStatus, error) {
+func (s *sayer) Say(ctx context.Context, text string) (chan audio.PlayStatus, error) {
 	logger := slog.With("text", ellipsis.Centering(text, 9))
 
-	ch := make(chan AudioPlayStatus, 2)
+	ch := make(chan audio.PlayStatus, 2)
 
 	trackID, err := s.say(ctx, text)
 	if err != nil {
@@ -159,8 +160,8 @@ func (s *sayer) Say(ctx context.Context, text string) (chan AudioPlayStatus, err
 	}
 	if len(trackID) == 0 {
 		logger.Error("[sayer] say (TTS & PLAY) got an unexpected empty trackID with no err")
-		ch <- AudioPlayStatusStart
-		ch <- AudioPlayStatusEnd
+		ch <- audio.PlayStatusStart
+		ch <- audio.PlayStatusEnd
 		return ch, nil
 	}
 
@@ -170,26 +171,26 @@ func (s *sayer) Say(ctx context.Context, text string) (chan AudioPlayStatus, err
 	wg.Add(1)
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
-		err = s.auidioController.Wait(ctx, ReportStart(trackID))
+		err = s.auidioController.Wait(ctx, audio.ReportStart(trackID))
 		if err != nil {
 			logger.Error("[sayer] wait START report from audioview failed", "err", err)
-			ch <- AudioPlayStatusErr
+			ch <- audio.PlayStatusErr
 		} else {
 			logger.Info("[sayer] got audioview report: playing started")
-			ch <- AudioPlayStatusStart
+			ch <- audio.PlayStatusStart
 		}
 		wg.Done()
 	}()
 
 	go func() {
-		err = s.auidioController.Wait(ctx, ReportEnd(trackID))
+		err = s.auidioController.Wait(ctx, audio.ReportEnd(trackID))
 		if err != nil {
 			logger.Error("[sayer] wait END report from audioview failed", "err", err)
-			ch <- AudioPlayStatusErr
+			ch <- audio.PlayStatusErr
 		} else {
 			logger.Info("[sayer] got audioview report: playing ended")
 			cancel() // end the goroutine above
-			ch <- AudioPlayStatusEnd
+			ch <- audio.PlayStatusEnd
 		}
 		wg.Wait()
 		close(ch)
@@ -208,14 +209,14 @@ func (s *sayer) say(ctx context.Context, text string) (trackID string, err error
 	// _, _, err := s.cli.Say("miku", text)
 	// 草，这个 GitHub Copilot 老术力口了，有 role 字段还硬编码个 miku hhh
 
-	format, audio, err := s.cli.Say(s.role, text)
+	format, audioContent, err := s.cli.Say(s.role, text)
 	if err != nil {
 		return "", err
 	}
 
-	track := s.auidioController.AudioToTrack(format, audio)
+	track := s.auidioController.AudioToTrack(format, audioContent)
 
-	if a, ok := ctx.Value("playAt").(AudioPlayAt); ok {
+	if a, ok := ctx.Value("playAt").(audio.PlayAt); ok {
 		track.PlayMode = string(a)
 	}
 

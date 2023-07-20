@@ -1,4 +1,4 @@
-package main
+package audio
 
 import (
 	"context"
@@ -6,12 +6,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/cdfmlr/ellipsis"
 	"muvtuberdriver/pkg/wsforwarder"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cdfmlr/ellipsis"
 
 	"golang.org/x/exp/slog"
 	"golang.org/x/net/websocket"
@@ -19,7 +20,7 @@ import (
 
 const CleanReportAfter = 5 * time.Minute
 
-type AudioController interface {
+type Controller interface {
 	AudioToTrack(format string, audio []byte) *Track
 
 	PlayBgm(track *Track) error
@@ -42,9 +43,6 @@ type AudioController interface {
 	Wait(ctx context.Context, report *Report) error
 }
 
-// this file implement the audio controller for the audioview,
-// that is, a websocket server that sends audio to the audioview.
-
 type audioController struct {
 	forwarder wsforwarder.Forwarder
 
@@ -52,7 +50,7 @@ type audioController struct {
 	cleaningReports sync.Mutex
 }
 
-func NewAudioController() AudioController {
+func NewController() Controller {
 	return &audioController{
 		forwarder: wsforwarder.NewMessageForwarder(),
 	}
@@ -115,7 +113,7 @@ func (c *audioController) AudioToTrack(format string, audio []byte) *Track {
 
 func (c *audioController) sendPlayCmd(cmd string, track *Track) error {
 	// construct the command
-	command := AudioMessage{
+	command := Message{
 		Cmd:  cmd,
 		Data: track,
 	}
@@ -153,7 +151,7 @@ func (c *audioController) Wait(ctx context.Context, report *Report) error {
 // Blocks until the connection is closed.
 func (c *audioController) recv(conn *websocket.Conn) {
 	for {
-		var msg AudioMessage
+		var msg Message
 		err := websocket.JSON.Receive(conn, &msg)
 		if err != nil {
 			slog.Warn("[audioController] recv: receive msg failed", "err", err)
@@ -173,7 +171,7 @@ func (c *audioController) recv(conn *websocket.Conn) {
 	}
 }
 
-func (c *audioController) handleReport(msg *AudioMessage) {
+func (c *audioController) handleReport(msg *Message) {
 	// save the report
 	if msg.Data == nil {
 		slog.Warn("[audioController] recv report failed: data is nil")
@@ -193,7 +191,7 @@ func (c *audioController) handleReport(msg *AudioMessage) {
 		slog.Warn("[audioController] recv report failed: ID is empty")
 		return
 	}
-	if report.Status != AudioPlayStatusStart && report.Status != AudioPlayStatusEnd {
+	if report.Status != PlayStatusStart && report.Status != PlayStatusEnd {
 		slog.Error("report status is not start or end", "status", report.Status)
 		return
 	}
@@ -239,71 +237,3 @@ func (c *audioController) cleanUnusedReports() {
 	// until the lock is released.
 	time.Sleep(CleanReportAfter)
 }
-
-// AudioMessage is the command msg sent to the audioview.
-type AudioMessage struct {
-	Cmd  string `json:"cmd"`
-	Data any    `json:"data"` // Track | Report
-}
-
-// Track is a audio playing task.
-// It should be named AudioTask, but I'm too lazy to change it.
-type Track struct {
-	ID       string  `json:"id"` // used to identify the track & report progress (start, end, etc.)
-	Src      string  `json:"src"`
-	Format   string  `json:"format,omitempty"`
-	Volume   float64 `json:"volume,omitempty"`
-	PlayMode string  `json:"playMode,omitempty"` // PlayMode should be named PlayAt, it's indicating when to play the track
-}
-
-// Report is the report msg sent from the audioview.
-type Report struct {
-	ID     string          `json:"id"`     // the ID of the track
-	Status AudioPlayStatus `json:"status"` // the status of the track: start | end
-}
-
-func ReportStart(id string) *Report {
-	return &Report{
-		ID:     id,
-		Status: AudioPlayStatusStart,
-	}
-}
-
-func ReportEnd(id string) *Report {
-	return &Report{
-		ID:     id,
-		Status: AudioPlayStatusEnd,
-	}
-}
-
-func (r *Report) String() string {
-	return fmt.Sprintf("Report(%s: %s)", r.ID, r.Status)
-}
-
-type AudioPlayAt string
-
-// PlayModes
-const (
-	PlayAtNext      AudioPlayAt = "next"
-	PlayAtNow       AudioPlayAt = "now"
-	PlayAtResetNext AudioPlayAt = "resetNext"
-	PlayAtResetNow  AudioPlayAt = "resetNow"
-)
-
-// cmds
-const (
-	CmdPlayBgm   = "playBgm"
-	CmdPlayFx    = "playFx"
-	CmdPlaySing  = "playSing"
-	CmdPlayVocal = "playVocal"
-)
-
-// AudioPlayStatus: StatusStart | StatusEnd
-type AudioPlayStatus string
-
-// status from report
-const (
-	AudioPlayStatusStart AudioPlayStatus = "start"
-	AudioPlayStatusEnd   AudioPlayStatus = "end"
-	AudioPlayStatusErr   AudioPlayStatus = "err"
-)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"muvtuberdriver/audio"
 	chatbot2 "muvtuberdriver/chatbot"
 	"muvtuberdriver/config"
 	"muvtuberdriver/model"
@@ -104,7 +105,7 @@ func main() {
 	textInChan := make(chan *model.TextIn, RecvMsgChanBuf)
 	textOutChan := make(chan *model.TextOut, RecvMsgChanBuf)
 
-	audioController := NewAudioController()
+	audioController := audio.NewController()
 	go func() {
 		log.Fatal(http.ListenAndServe(
 			Config.Listen.AudioControllerWs,
