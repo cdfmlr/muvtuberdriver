@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -15,40 +14,12 @@ import (
 	"net/http"
 	"os"
 	"reflect"
-	"time"
 
 	"golang.org/x/exp/slog"
 )
 
-var tipsFlagsToConfig = `目前这是个过度版本：
-我不确定是否要完全弃用 flags 又或者现在新的 config from yaml 机制是否合理，所以两个都保留了。
-我现在只是把原来的 flags 嫁接到了 config 上，测试一个版本，如果 config 机制没有问题，就删掉 flags。
-现在处理的逻辑是这样：如果设置了 -c 则使用配置文件，否则使用 flags。`
-
 var (
 	dryRun = flag.Bool("dryrun", false, "prints config and exit.")
-
-	// ⬇️ deprecated: use config file instead ⬇️
-	// TODO: remove these flags at v0.4.0
-	blivedmServerAddr    = flag.String("blivedm", "ws://localhost:12450/api/chat", "(dial) blivedm server address")
-	roomid               = flag.Int("roomid", 0, "blivedm roomid")
-	live2dDriverAddr     = flag.String("live2ddrv", "http://localhost:9004/driver", "(dail) live2d driver address")
-	musharingChatbotAddr = flag.String("mchatbot", "localhost:50051", "(dail) musharing chatbot api server (gRPC) address")
-	textInHttpAddr       = flag.String("textinhttp", ":9010", "(listen) textIn http server address")
-	textOutHttpAddr      = flag.String("textouthttp", "", "(dail) send textOut to http server (e.g. http://localhost:51080)")
-	chatgptAddr          = flag.String("chatgpt", "localhost:50052", "(dail) chatgpt api server (gRPC) address")
-	chatgptConfigs       = chatgptConfig{}
-	reduceDuration       = flag.Duration("reduce_duration", 2*time.Second, "reduce duration")
-
-	live2dMsgFwd = flag.String("live2d_msg_fwd", "http://localhost:9002/live2d", "(dail) live2d message forward from http")
-	readDm       = flag.Bool("readdm", true, "read comment?")
-	dropHttpOut  = flag.Int("drophttpout", 5, "textOutHttp drop rate: 0~100")
-
-	// new sayer as a srv & audioview
-	audioControllerAddr = flag.String("audiocontroller", ":9020", "(listen) audio controller ws server address")
-	sayerAddr           = flag.String("sayer", "localhost:51055", "(dial) sayer gRPC server address")
-	sayerRole           = flag.String("sayerrole", "", "role to sayer")
-	// ⬆️ deprecated: use config file instead ⬆️
 
 	genExampleConfig = flag.Bool("gen_example_config", false, "generate example config, print to stdout and exit")
 	configFile       = flag.String("c", "", "read config file (YAML)")
@@ -57,24 +28,7 @@ var (
 // Config is the global config
 var Config = config.UseConfig()
 
-type chatgptConfig []chatbot2.ChatGPTConfig
-
-// String returns the default value (大概吧)
-func (i *chatgptConfig) String() string {
-	return ""
-}
-
-func (i *chatgptConfig) Set(value string) error {
-	return json.Unmarshal([]byte(value), &i)
-}
-
 func main() {
-	flag.Var(&chatgptConfigs, "chatgpt_config", `chatgpt configs in json: [{"version": 3, "api_key": "sk_xxx", "initial_prompt": "hello"}, ...] `)
-	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
-		flag.PrintDefaults()
-		fmt.Println("notice:\n", tipsFlagsToConfig)
-	}
 	flag.Parse()
 
 	if *genExampleConfig {
@@ -89,9 +43,7 @@ func main() {
 		Config.ReadFromYaml(*configFile)
 	} else {
 		slog.Error("Config file is required, use -c path/to/config.yaml to specify")
-		// os.Exit(1)
-		slog.Warn("Using cli flags is deprecated. Support will be removed in the future (about 2022-05-01, v0.4.0)")
-		flagToConfig()
+		os.Exit(1)
 	}
 
 	slog.Info("Config loaded:")
@@ -272,56 +224,4 @@ func initChatgptChatbot() (chatbot2.Chatbot, error) {
 		cfg.Server, cfg.GetCooldownDuraton(), cfg.Configs...)
 
 	return chatgptChatbot, err
-}
-
-// Deprecated: use config file instead.
-// flagToConfig read flags and set config
-//
-// TODO: remove this function in v0.4.0
-func flagToConfig() {
-	if *blivedmServerAddr != "" {
-		Config.Blivedm.Server = *blivedmServerAddr
-	}
-	if *roomid != 0 {
-		Config.Blivedm.Roomid = *roomid
-	}
-	if *live2dDriverAddr != "" {
-		Config.Live2d.Driver = *live2dDriverAddr
-	}
-	if *musharingChatbotAddr != "" {
-		Config.Chatbot.Musharing.Server = *musharingChatbotAddr
-	}
-	if *textInHttpAddr != "" {
-		Config.Listen.TextInHttp = *textInHttpAddr
-	}
-	if *textOutHttpAddr != "" {
-		Config.TextOutHttp.Server = *textOutHttpAddr
-	}
-	if *chatgptAddr != "" {
-		Config.Chatbot.Chatgpt.Server = *chatgptAddr
-	}
-	if len([]chatbot2.ChatGPTConfig(chatgptConfigs)) != 0 {
-		Config.Chatbot.Chatgpt.Configs = chatgptConfigs
-	}
-	if *reduceDuration != 0 {
-		Config.ReduceDuration = int(reduceDuration.Seconds())
-	}
-	if *live2dMsgFwd != "" {
-		Config.Live2d.Forwarder = *live2dMsgFwd
-	}
-	if *readDm != false {
-		Config.ReadDm = *readDm
-	}
-	if *dropHttpOut != 0 {
-		Config.TextOutHttp.DropRate = *dropHttpOut
-	}
-	if *audioControllerAddr != "" {
-		Config.Listen.AudioControllerWs = *audioControllerAddr
-	}
-	if *sayerAddr != "" {
-		Config.Sayer.Server = *sayerAddr
-	}
-	if *sayerRole != "" {
-		Config.Sayer.Role = *sayerRole
-	}
 }
