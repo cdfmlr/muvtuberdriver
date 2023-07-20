@@ -6,7 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"muvtuberdriver/audio"
-	chatbot2 "muvtuberdriver/chatbot"
+	"muvtuberdriver/chatbot"
 	"muvtuberdriver/config"
 	"muvtuberdriver/live2d"
 	"muvtuberdriver/model"
@@ -98,7 +98,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	go chatbot2.TextOutFromChatbot(pchatbot, textInFiltered, textOutChan)
+	go chatbot.TextOutFromChatbot(pchatbot, textInFiltered, textOutChan)
 
 	// out -> filter -> out
 	textOutFiltered := textOutChan
@@ -151,13 +151,13 @@ func main() {
 // If it fails, it should return nil and a non-nil error.
 //
 // A initChatbotFunc reads config from the global Config variable.
-type initChatbotFunc func() (chatbot2.Chatbot, error)
+type initChatbotFunc func() (chatbot.Chatbot, error)
 
 // initPrioritizedChatbot initializes a prioritized chatbot with all configured chatbots.
 //
 // It logs the error and continue if a chatbot fails to initialize.
-func initPrioritizedChatbot() (chatbot2.Chatbot, error) {
-	var chatbots []chatbot2.Chatbot
+func initPrioritizedChatbot() (chatbot.Chatbot, error) {
+	var chatbots []chatbot.Chatbot
 
 	// 按照优先级 从低到高 依次加入 chatbots
 
@@ -166,33 +166,33 @@ func initPrioritizedChatbot() (chatbot2.Chatbot, error) {
 		initChatgptChatbot,
 	}
 	for _, initChatbotFunc := range initChatbotFuncs {
-		chatbot, err := initChatbotFunc()
+		bot, err := initChatbotFunc()
 		if err != nil {
 			slog.Error("init chatbot failed",
 				"initChatbotFunc", reflect.TypeOf(initChatbotFunc).Name(),
 				"err", err)
 			continue
 		}
-		if chatbot != nil {
-			chatbots = append(chatbots, chatbot)
+		if bot != nil {
+			chatbots = append(chatbots, bot)
 		}
 	}
 
 	// 按照前面 append 的顺序，index -> priority 从低到高
 	// 组成 prioritizedChatbot。
 
-	chatbotMap := map[model.Priority]chatbot2.Chatbot{}
-	for i, chatbot := range chatbots {
-		chatbotMap[model.Priority(i)] = chatbot
+	chatbotMap := map[model.Priority]chatbot.Chatbot{}
+	for i, bot := range chatbots {
+		chatbotMap[model.Priority(i)] = bot
 	}
-	prioritizedChatbot := chatbot2.NewPrioritizedChatbot(chatbotMap)
+	prioritizedChatbot := chatbot.NewPrioritizedChatbot(chatbotMap)
 	return prioritizedChatbot, nil
 }
 
 // initMusharingChatbot initializes a musharing chatbot if configured.
 //
 // This function directly reads the global Config.
-func initMusharingChatbot() (chatbot2.Chatbot, error) {
+func initMusharingChatbot() (chatbot.Chatbot, error) {
 	enabled, err := Config.Chatbot.Musharing.IsEnabledAndValid()
 	if !enabled {
 		slog.Info("musharing chatbot is disabled")
@@ -201,14 +201,14 @@ func initMusharingChatbot() (chatbot2.Chatbot, error) {
 	if err != nil {
 		return nil, err
 	}
-	musharingChatbot, err := chatbot2.NewMusharingChatbot(Config.Chatbot.Musharing.Server)
+	musharingChatbot, err := chatbot.NewMusharingChatbot(Config.Chatbot.Musharing.Server)
 	return musharingChatbot, err
 }
 
 // initChatgptChatbot initializes a chatgpt chatbot if configured.
 //
 // This function directly reads the global Config.
-func initChatgptChatbot() (chatbot2.Chatbot, error) {
+func initChatgptChatbot() (chatbot.Chatbot, error) {
 	cfg := Config.Chatbot.Chatgpt
 
 	enabled, err := cfg.IsEnabledAndValid()
@@ -220,7 +220,7 @@ func initChatgptChatbot() (chatbot2.Chatbot, error) {
 		return nil, err
 	}
 
-	chatgptChatbot, err := chatbot2.NewChatGPTChatbot(
+	chatgptChatbot, err := chatbot.NewChatGPTChatbot(
 		cfg.Server, cfg.GetCooldownDuraton(), cfg.Configs...)
 
 	return chatgptChatbot, err
