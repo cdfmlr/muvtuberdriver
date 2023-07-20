@@ -1,4 +1,5 @@
-package main
+// Package live2d talks to the live2ddriver.
+package live2d
 
 import (
 	"bytes"
@@ -11,9 +12,9 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-type Live2DDriver interface {
+type Driver interface {
 	TextOutToLive2DDriver(textOut *model.TextOut) error
-	live2dToMotion(motion string) // unexport this to remind the todo documented on live2dDriver.live2dToMotion
+	Live2dToMotion(motion string) // note: remind the todo documented on live2dDriver.live2dToMotion
 }
 
 type live2dDriver struct {
@@ -23,7 +24,7 @@ type live2dDriver struct {
 	client *http.Client
 }
 
-func NewLive2DDriver(server string, MsgForwardServer string) Live2DDriver {
+func NewDriver(server string, MsgForwardServer string) Driver {
 	return &live2dDriver{
 		Server:           server,
 		MsgForwardServer: MsgForwardServer,
@@ -48,13 +49,13 @@ func (l *live2dDriver) TextOutToLive2DDriver(textOut *model.TextOut) error {
 	return nil
 }
 
-// live2dToMotion sends motion command to live2d model
+// Live2dToMotion sends motion command to live2d model
 //
 // TODO: 在 driver 层支持基本动作的调用，不要想现在这样直接拿 wsforwarder 传。
 // require: new driver (gRPC) api.
 //
 //	curl -X POST localhost:9002/live2d -H 'Content-Type: application/json' -d '{"motion": "idle"}'
-func (l *live2dDriver) live2dToMotion(motion string) {
+func (l *live2dDriver) Live2dToMotion(motion string) {
 	client := &http.Client{}
 	var data = strings.NewReader(fmt.Sprintf(`{"motion": "%s"}`, motion))
 	req, err := http.NewRequest("POST", l.MsgForwardServer, data)

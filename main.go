@@ -9,6 +9,7 @@ import (
 	"muvtuberdriver/audio"
 	chatbot2 "muvtuberdriver/chatbot"
 	"muvtuberdriver/config"
+	"muvtuberdriver/live2d"
 	"muvtuberdriver/model"
 	"net/http"
 	"os"
@@ -112,7 +113,7 @@ func main() {
 			audioController.WsHandler()))
 	}()
 
-	live2d := NewLive2DDriver(Config.Live2d.Driver, Config.Live2d.Forwarder)
+	live2d := live2d.NewDriver(Config.Live2d.Driver, Config.Live2d.Forwarder)
 
 	sayer := NewAllInOneSayer(Config.Sayer.Server, Config.Sayer.Role, audioController, live2d)
 
@@ -134,7 +135,7 @@ func main() {
 		if !Config.ReadDm {
 			return true
 		}
-		live2d.live2dToMotion("flick_head") // 准备张嘴说话
+		live2d.Live2dToMotion("flick_head") // 准备张嘴说话
 		sayer.Say(text)
 		return true
 	}).FilterTextIn(textInFiltered)

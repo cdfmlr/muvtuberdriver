@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"muvtuberdriver/audio"
+	"muvtuberdriver/live2d"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,8 +31,8 @@ type Sayer interface {
 type allInOneSayer struct {
 	sayer           internalSayer
 	saying          sync.Mutex
-	live2dDriver    Live2DDriver // for lips sync
-	lostConsistency atomic.Int32 // have been giving up waiting audio start or end
+	live2dDriver    live2d.Driver // for lips sync
+	lostConsistency atomic.Int32  // have been giving up waiting audio start or end
 }
 
 func (s *allInOneSayer) Say(text string) error {
@@ -45,8 +46,8 @@ func (s *allInOneSayer) Say(text string) error {
 	s.saying.Lock()
 	defer s.saying.Unlock()
 
-	s.live2dDriver.live2dToMotion("flick_head") // 准备张嘴说话
-	defer s.live2dDriver.live2dToMotion("idle") // 说完闭嘴
+	s.live2dDriver.Live2dToMotion("flick_head") // 准备张嘴说话
+	defer s.live2dDriver.Live2dToMotion("idle") // 说完闭嘴
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*300) // endTimeout
 	defer cancel()
@@ -98,7 +99,7 @@ func (s *allInOneSayer) Say(text string) error {
 	// never reach here
 }
 
-func NewAllInOneSayer(addr string, role string, audioController audio.Controller, live2dDriver Live2DDriver) Sayer {
+func NewAllInOneSayer(addr string, role string, audioController audio.Controller, live2dDriver live2d.Driver) Sayer {
 	return &allInOneSayer{
 		sayer:        new_sayer(addr, role, audioController),
 		live2dDriver: live2dDriver,
