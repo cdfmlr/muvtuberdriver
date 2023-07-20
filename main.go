@@ -11,6 +11,7 @@ import (
 	"muvtuberdriver/config"
 	"muvtuberdriver/live2d"
 	"muvtuberdriver/model"
+	"muvtuberdriver/sayer"
 	"net/http"
 	"os"
 	"reflect"
@@ -115,7 +116,7 @@ func main() {
 
 	live2d := live2d.NewDriver(Config.Live2d.Driver, Config.Live2d.Forwarder)
 
-	sayer := NewAllInOneSayer(Config.Sayer.Server, Config.Sayer.Role, audioController, live2d)
+	sayer := sayer.NewAllInOneSayer(Config.Sayer.Server, Config.Sayer.Role, audioController, live2d)
 
 	// (dm) & (http) -> in
 	if Config.Blivedm.Roomid != 0 {
