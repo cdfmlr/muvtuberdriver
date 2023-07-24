@@ -135,7 +135,11 @@ func main() {
 			"priority", textOut.Priority,
 			"content", textOut.Content)
 
-		live2d.TextOutToLive2DDriver(textOut)
+		// emotext result breaks the lipsync
+		// TODO: emotext on muvtuberdriver side, not on live2ddriver side
+		if Config.Sayer.LipsyncStrategy != "audio_analyze" {
+			live2d.TextOutToLive2DDriver(textOut)
+		}
 
 		sayer.Say(textOut.Content)
 
