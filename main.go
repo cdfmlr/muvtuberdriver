@@ -37,7 +37,6 @@ func main() {
 		return
 	}
 
-	// TODO: remove flags->config logic at v0.4.0
 	if *configFile != "" {
 		slog.Info("Reading config file.", "configFile", *configFile)
 		Config.ReadFromYaml(*configFile)

@@ -136,7 +136,7 @@ func (s *lipsyncSayer) say(text string) error {
 	// blockingPlayback
 
 	if s.lipsyncStrategy == LipsyncStrategyAudioAnalyze {
-		err := s.live2dDriver.Live2dSpeak(audioContent, "", "flick_head") // TODO: expression, motion
+		err := s.live2dDriver.Live2dSpeak(audioContent, "", "") // TODO: expression, motion
 		if err != nil {
 			logger.Warn("[lipsyncSayer] Live2dSpeak failed (LipsyncStrategyAudioAnalyze)",
 				"err", err, "falling-back-to", "LipsyncStrategyKeepMotion")

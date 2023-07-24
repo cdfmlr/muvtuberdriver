@@ -117,7 +117,7 @@ func constructSpeakData(audioContent []byte, expression string, motion string) i
 
 	var data = speakData{
 		Speak: speak{
-			Audio:      audio.Base64EncodeAudio("wav", audioContent),
+			Audio:      audio.Base64EncodeAudio("audio/wav", audioContent),
 			Expression: expression,
 			Motion:     motion,
 		}}
