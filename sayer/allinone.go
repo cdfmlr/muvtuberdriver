@@ -15,6 +15,8 @@ import (
 	"golang.org/x/exp/slog"
 )
 
+// Deprecated: use NewLipsyncSayer instead. To be removed in v0.5.0.
+//
 // allInOneSayer is the muggles' dreaming Sayer..
 // it Say()s with blocking, mutexing and live2d lips syncing.
 //
@@ -25,7 +27,7 @@ type allInOneSayer struct {
 	sayer           internalSayer
 	saying          sync.Mutex
 	live2dDriver    live2d.Driver // for lips sync
-	lostConsistency atomic.Int32 // have been giving up waiting audio start or end
+	lostConsistency atomic.Int32  // have been giving up waiting audio start or end
 }
 
 func (s *allInOneSayer) Say(text string) error {
@@ -55,7 +57,7 @@ func (s *allInOneSayer) Say(text string) error {
 
 	ch, err := s.sayer.Say(ctx, text)
 	if err != nil {
-		logger.Warn("[allInOneSayer] say failed (tts OR initial the audio playback task)", "err", err)
+		logger.Warn("[allInOneSayer] say failed (tts OR initial the audio blockingPlayback task)", "err", err)
 		return err
 	}
 	started := false
@@ -92,6 +94,7 @@ func (s *allInOneSayer) Say(text string) error {
 	// never reach here
 }
 
+// Deprecated: use NewLipsyncSayer instead.
 func NewAllInOneSayer(addr string, role string, audioController audio.Controller, live2dDriver live2d.Driver) Sayer {
 	return &allInOneSayer{
 		sayer:        new_sayer(addr, role, audioController),

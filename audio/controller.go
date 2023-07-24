@@ -94,6 +94,16 @@ func (c *audioController) PlayBgm(track *Track) error {
 //
 // TODO: sayer += ID & let audioController reuse it to identify the track
 func (c *audioController) AudioToTrack(format string, audio []byte) *Track {
+	audioHash := md5.Sum(audio)
+
+	return &Track{
+		ID:     fmt.Sprintf("%x", audioHash),
+		Src:    Base64EncodeAudio(format, audio),
+		Format: format,
+	}
+}
+
+func Base64EncodeAudio(format string, audio []byte) string {
 	var dataurl strings.Builder
 	dataurl.WriteString("data:")
 	dataurl.WriteString(format)
@@ -102,13 +112,7 @@ func (c *audioController) AudioToTrack(format string, audio []byte) *Track {
 	base64Content := base64.StdEncoding.EncodeToString(audio)
 	dataurl.WriteString(base64Content)
 
-	audioHash := md5.Sum(audio)
-
-	return &Track{
-		ID:     fmt.Sprintf("%x", audioHash),
-		Src:    dataurl.String(),
-		Format: format,
-	}
+	return dataurl.String()
 }
 
 func (c *audioController) sendPlayCmd(cmd string, track *Track) error {

@@ -11,9 +11,11 @@ import (
 	"golang.org/x/exp/slog"
 )
 
+// Deprecated: use lipsyncSayer instead. To be removed in v0.5.0.
+//
 // internalSayer is non-blocking.
 //
-// that use musayerapi & AudioController to do tts & playback jobs.
+// that use musayerapi & AudioController to do tts & blockingPlayback jobs.
 type internalSayer interface {
 	// Say is non-blocking.
 	//
@@ -23,6 +25,8 @@ type internalSayer interface {
 	Say(ctx context.Context, text string) (chan audio.PlayStatus, error)
 }
 
+// Deprecated: use lipsyncSayer instead. To be removed in v0.5.0.
+//
 // sayer is an internal sayer implementation.
 //
 // sayer calls:

@@ -68,7 +68,11 @@ func main() {
 
 	live2d := live2d.NewDriver(Config.Live2d.Driver, Config.Live2d.Forwarder)
 
-	sayer := sayer.NewAllInOneSayer(Config.Sayer.Server, Config.Sayer.Role, audioController, live2d)
+	// sayer := sayer.NewAllInOneSayer(Config.Sayer.Server, Config.Sayer.Role, audioController, live2d)
+	sayer := sayer.NewLipsyncSayer(Config.Sayer.Server,
+		audioController, live2d,
+		sayer.WithTtsRole(Config.Sayer.Role),
+		sayer.WithLipsyncStrategy(Config.Sayer.GetLipsyncStrategy()))
 
 	// (dm) & (http) -> in
 	if Config.Blivedm.Roomid != 0 {
