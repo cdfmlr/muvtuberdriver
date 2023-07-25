@@ -41,6 +41,9 @@ type Controller interface {
 	// 	// wait for the audioview finishing playing the track
 	// 	_ := c.Wait(ctx, ReportEnd(track.ID))
 	Wait(ctx context.Context, report *Report) error
+
+	// Reset the audioview
+	Reset() error
 }
 
 type audioController struct {
@@ -82,6 +85,14 @@ func (c *audioController) PlayFx(track *Track) error {
 
 func (c *audioController) PlayBgm(track *Track) error {
 	return c.sendPlayCmd(CmdPlayBgm, track)
+}
+
+// Reset the audioview: send a ResetCmd to ask audioview
+// refesh it's web page nad reconnect the websocket.
+//
+// TODO: reset the controller itself too.
+func (c *audioController) Reset() error {
+	return c.sendResetCmd()
 }
 
 // AudioToTrack converts the audio to a Track object.
@@ -136,6 +147,25 @@ func (c *audioController) sendPlayCmd(cmd string, track *Track) error {
 	return nil
 }
 
+func (c *audioController) sendResetCmd() error {
+	// construct the command
+	command := Message{
+		Cmd: CmdReset,
+	}
+
+	j, err := json.Marshal(command)
+	if err != nil {
+		return err
+	}
+
+	slog.Info("[audioController] sendResetCmd to audioview")
+
+	// send the command
+	c.forwarder.SendMessage(j)
+
+	return nil
+}
+
 func (c *audioController) Wait(ctx context.Context, report *Report) error {
 	waitingReport := report.String()
 	for {
@@ -165,7 +195,7 @@ func (c *audioController) recv(conn *websocket.Conn) {
 		switch msg.Cmd {
 		case "keepAlive":
 			// do nothing
-			slog.Info("[audioController] recv keepAlive from audioview")
+			// slog.Info("[audioController] recv keepAlive from audioview")
 		case "report":
 			c.handleReport(&msg)
 		default:

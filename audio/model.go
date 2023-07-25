@@ -58,6 +58,8 @@ const (
 	CmdPlayFx    = "playFx"
 	CmdPlaySing  = "playSing"
 	CmdPlayVocal = "playVocal"
+
+	CmdReset = "reset"
 )
 
 // PlayStatus: StatusStart | StatusEnd

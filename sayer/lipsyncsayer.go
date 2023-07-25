@@ -82,7 +82,7 @@ func NewLipsyncSayer(textAudioConverterAddr string,
 	}
 
 	lss.logger = slog.With("lipsyncSayer", fmt.Sprintf("%p", lss))
-	
+
 	lss.logger.Info("[lipsyncSayer] NewLipsyncSayer",
 		"textAudioConverterAddr", textAudioConverterAddr,
 		"ttsRole", lss.ttsRole,
@@ -123,7 +123,14 @@ func (s *lipsyncSayer) Say(text string) error {
 		logger.Info("[lipsyncSayer] Say: release saying lock", "lockingDuration", time.Since(st))
 	}()
 
-	return s.say(text)
+	err := s.say(text)
+
+	// lots of errors: try to reset the audioview
+	if err != nil && s.fails.Load() > 3 {
+		s.playbackController.Reset()
+	}
+
+	return err
 }
 
 // say do the core job (unsafely, blocking):
@@ -135,7 +142,7 @@ func (s *lipsyncSayer) say(text string) error {
 	if s.lipsyncStrategy == LipsyncStrategyKeepMotion { // sent earlier: looks more synchronous
 		s.live2dDriver.Live2dToMotion("flick_head") // 准备张嘴说话
 		defer s.live2dDriver.Live2dToMotion("idle") // 说完闭嘴
-		
+
 		logger.Info("[lipsyncSayer] LipsyncStrategyKeepMotion: Live2dToMotion", "motion", "flick_head")
 	}
 
@@ -185,7 +192,7 @@ func (s *lipsyncSayer) say(text string) error {
 func (s *lipsyncSayer) shouldPlayAt() audio.PlayAt {
 	fails := s.fails.Load()
 	switch {
-	case fails >= 3:
+	case fails > 2:
 		return audio.PlayAtResetNow
 	case fails > 0:
 		return audio.PlayAtResetNext
