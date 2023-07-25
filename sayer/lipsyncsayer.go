@@ -71,8 +71,6 @@ func NewLipsyncSayer(textAudioConverterAddr string,
 		live2dDriver:       live2dDriver,
 	}
 
-	lss.logger = slog.With("lipsyncSayer", lss)
-
 	for _, opt := range opts {
 		opt(lss)
 	}
@@ -83,7 +81,9 @@ func NewLipsyncSayer(textAudioConverterAddr string,
 		lss.lipsyncStrategy = defaultLipsyncStrategy
 	}
 
-	slog.Info("[lipsyncSayer] NewLipsyncSayer",
+	lss.logger = slog.With("lipsyncSayer", fmt.Sprintf("%p", lss))
+	
+	lss.logger.Info("[lipsyncSayer] NewLipsyncSayer",
 		"textAudioConverterAddr", textAudioConverterAddr,
 		"ttsRole", lss.ttsRole,
 		"lipsyncStrategy", lss.lipsyncStrategy)
@@ -222,6 +222,11 @@ func (s *lipsyncSayer) blockingPlayback(track *audio.Track, logger *slog.Logger)
 	return s.waitPlaying(track.ID, logger)
 }
 
+const (
+	playbackStartTimeout = time.Second * 10
+	playbackEndTimeout   = time.Second * 300
+)
+
 // waitPlaying blocks until the track is played (end) or error occurred (timeout, etc.).
 //
 // Waiting start for 30 seconds and end for 300 seconds:
@@ -233,10 +238,10 @@ func (s *lipsyncSayer) blockingPlayback(track *audio.Track, logger *slog.Logger)
 // if any error occurred (start or end), an error will be returned immediately.
 func (s *lipsyncSayer) waitPlaying(trackID string, logger *slog.Logger) error {
 	// here the ctx{Start, End} are used to control the timeout.
-	ctxStart, cancelStart := context.WithTimeout(context.Background(), time.Second*30)
+	ctxStart, cancelStart := context.WithTimeout(context.Background(), playbackStartTimeout)
 	defer cancelStart()
 
-	ctxEnd, cancelEnd := context.WithTimeout(context.Background(), time.Second*300)
+	ctxEnd, cancelEnd := context.WithTimeout(context.Background(), playbackEndTimeout)
 	defer cancelEnd()
 
 	// there is at most one msg sent to each of the channels.
