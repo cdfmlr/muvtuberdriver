@@ -165,6 +165,7 @@ func (c *audioController) recv(conn *websocket.Conn) {
 		switch msg.Cmd {
 		case "keepAlive":
 			// do nothing
+			slog.Info("[audioController] recv keepAlive from audioview")
 		case "report":
 			c.handleReport(&msg)
 		default:
