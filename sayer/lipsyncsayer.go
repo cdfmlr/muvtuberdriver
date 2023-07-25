@@ -52,6 +52,8 @@ type lipsyncSayer struct {
 
 	saying sync.Mutex
 	fails  atomic.Int32
+
+	logger *slog.Logger
 }
 
 func NewLipsyncSayer(textAudioConverterAddr string,
@@ -69,6 +71,8 @@ func NewLipsyncSayer(textAudioConverterAddr string,
 		live2dDriver:       live2dDriver,
 	}
 
+	lss.logger = slog.With("lipsyncSayer", lss)
+
 	for _, opt := range opts {
 		opt(lss)
 	}
@@ -78,6 +82,11 @@ func NewLipsyncSayer(textAudioConverterAddr string,
 	if lss.lipsyncStrategy == "" {
 		lss.lipsyncStrategy = defaultLipsyncStrategy
 	}
+
+	slog.Info("[lipsyncSayer] NewLipsyncSayer",
+		"textAudioConverterAddr", textAudioConverterAddr,
+		"ttsRole", lss.ttsRole,
+		"lipsyncStrategy", lss.lipsyncStrategy)
 
 	return lss
 }
@@ -104,8 +113,15 @@ func (s *lipsyncSayer) Say(text string) error {
 		return nil
 	}
 
+	logger := s.logger.With("text", ellipsis.Centering(text, 15))
+	st := time.Now()
+
+	logger.Info("[lipsyncSayer] Say: waiting for saying lock", "now", st)
 	s.saying.Lock()
-	defer s.saying.Unlock()
+	defer func() {
+		s.saying.Unlock()
+		logger.Info("[lipsyncSayer] Say: release saying lock", "lockingDuration", time.Since(st))
+	}()
 
 	return s.say(text)
 }
@@ -114,11 +130,13 @@ func (s *lipsyncSayer) Say(text string) error {
 //
 //	text -> audio -> playback & lipsync -> wait
 func (s *lipsyncSayer) say(text string) error {
-	logger := slog.With("text", ellipsis.Centering(text, 15))
+	logger := s.logger.With("text", ellipsis.Centering(text, 15))
 
 	if s.lipsyncStrategy == LipsyncStrategyKeepMotion { // sent earlier: looks more synchronous
 		s.live2dDriver.Live2dToMotion("flick_head") // 准备张嘴说话
 		defer s.live2dDriver.Live2dToMotion("idle") // 说完闭嘴
+		
+		logger.Info("[lipsyncSayer] LipsyncStrategyKeepMotion: Live2dToMotion", "motion", "flick_head")
 	}
 
 	// text -> audio
@@ -128,14 +146,17 @@ func (s *lipsyncSayer) say(text string) error {
 		logger.Warn("[lipsyncSayer] say failed (textToAudio)", "err", err)
 		return err
 	}
+	logger.Info("[lipsyncSayer] textToAudio success", "format", format, "len(audioContent)", len(audioContent))
 
 	// audio -> track
 
 	track := s.audioToTrack(format, audioContent)
+	logger.Info("[lipsyncSayer] audioToTrack success", "trackID", track.ID, "playAt", track.PlayMode)
 
 	// blockingPlayback
 
 	if s.lipsyncStrategy == LipsyncStrategyAudioAnalyze {
+		logger.Info("[lipsyncSayer] LipsyncStrategyAudioAnalyze: Live2dSpeak", "len(audioContent)", len(audioContent))
 		err := s.live2dDriver.Live2dSpeak(audioContent, "", "") // TODO: expression, motion
 		if err != nil {
 			logger.Warn("[lipsyncSayer] Live2dSpeak failed (LipsyncStrategyAudioAnalyze)",
@@ -148,11 +169,12 @@ func (s *lipsyncSayer) say(text string) error {
 	}
 
 	if err := s.blockingPlayback(track, logger); err != nil {
-		logger.Error("[lipsyncSayer] say failed (playback)", "err", err)
 		s.fails.Add(1)
+		logger.Error("[lipsyncSayer] say failed (playback)", "err", err, "trackID", track.ID, "fails", s.fails.Load())
 		return err
 	} else {
 		s.fails.Store(0)
+		logger.Info("[lipsyncSayer] say success", "trackID", track.ID, "reset: fails", s.fails.Load())
 	}
 
 	return nil
@@ -163,7 +185,7 @@ func (s *lipsyncSayer) say(text string) error {
 func (s *lipsyncSayer) shouldPlayAt() audio.PlayAt {
 	fails := s.fails.Load()
 	switch {
-	case fails > 3:
+	case fails >= 3:
 		return audio.PlayAtResetNow
 	case fails > 0:
 		return audio.PlayAtResetNext
