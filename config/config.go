@@ -5,9 +5,11 @@ import (
 	"errors"
 	"io"
 	chatbot2 "muvtuberdriver/chatbot"
-	"github.com/cdfmlr/ellipsis"
+	"muvtuberdriver/sayer"
 	"os"
 	"time"
+
+	"github.com/cdfmlr/ellipsis"
 
 	"gopkg.in/yaml.v3"
 )
@@ -104,8 +106,24 @@ func (c *ChatgptChatbotConfig) GetCooldownDuraton() time.Duration {
 
 // SayerConfig 文本语音合成配置
 type SayerConfig struct {
-	Server string // sayer gRPC server address
-	Role   string // role to sayer
+	Server          string // sayer gRPC server address
+	Role            string // role to sayer
+	LipsyncStrategy string // lipsync strategy: none, keep_motion, audio_analyze
+}
+
+func (c SayerConfig) GetLipsyncStrategy() sayer.LipsyncStrategy {
+	switch c.LipsyncStrategy {
+	case "":
+		return sayer.LipsyncStrategyKeepMotion // backward compatibility
+	case "none":
+		return sayer.LipsyncStrategyNone
+	case "keep_motion":
+		return sayer.LipsyncStrategyKeepMotion
+	case "audio_analyze":
+		return sayer.LipsyncStrategyAudioAnalyze
+	default:
+		panic("unknown lipsync strategy: " + c.LipsyncStrategy)
+	}
 }
 
 // ListenConfig 这个程序会监听的一些地址
@@ -128,32 +146,32 @@ func (c *config) Write(dst io.Writer) error {
 	return yaml.NewEncoder(dst).Encode(&c)
 }
 
-// DesensitizedCopy desensitize the config. 
+// DesensitizedCopy desensitize the config.
 // Returns a pointer to the desensitized config copy.
-// 
+//
 // If it's failed to make it, it panics.
 //
 // Avoid keys being printed to the log.
 func (c *config) DesensitizedCopy() *config {
-    var cCopy config
-    
-    // deep copy
-    buf := bytes.NewBuffer(nil)
-    if err := yaml.NewEncoder(buf).Encode(&c); err != nil {
-        panic(err)
-    }
-    if err := yaml.NewDecoder(buf).Decode(&cCopy); err != nil {
-        panic(err)
-    }
+	var cCopy config
 
-    // OpenAI API Key
-    chatgptConfigs := &cCopy.Chatbot.Chatgpt.Configs  // a shorthand for easy typing
-    for i := 0; i < len(*chatgptConfigs); i++ {
-        apiKey := &((*chatgptConfigs)[i].ApiKey) // another shorthand
-        *apiKey = ellipsis.Centering(*apiKey, 9)
-    }
+	// deep copy
+	buf := bytes.NewBuffer(nil)
+	if err := yaml.NewEncoder(buf).Encode(&c); err != nil {
+		panic(err)
+	}
+	if err := yaml.NewDecoder(buf).Decode(&cCopy); err != nil {
+		panic(err)
+	}
 
-    return &cCopy
+	// OpenAI API Key
+	chatgptConfigs := &cCopy.Chatbot.Chatgpt.Configs // a shorthand for easy typing
+	for i := 0; i < len(*chatgptConfigs); i++ {
+		apiKey := &((*chatgptConfigs)[i].ApiKey) // another shorthand
+		*apiKey = ellipsis.Centering(*apiKey, 9)
+	}
+
+	return &cCopy
 }
 
 // ReadFromYaml 读取配置文件
@@ -178,8 +196,15 @@ func (c *config) WriteToYaml(file string) error {
 	return c.Write(f)
 }
 
-// Check 检查配置是否合法: 懒得检查了都允许吧
 func (c *config) Check() error {
+	defer func() {
+		if err := recover(); err != nil {
+			panic(errors.New("config check failed: " + err.(error).Error()))
+		}
+	}()
+
+	c.Sayer.GetLipsyncStrategy() // check lipsync strategy: failed => panic
+
 	return nil
 }
 
@@ -228,8 +253,9 @@ func ExampleConfig() config {
 			},
 		},
 		Sayer: SayerConfig{
-			Server: "externalsayer:50010",
-			Role:   "miku",
+			Server:          "externalsayer:50010",
+			Role:            "default",
+			LipsyncStrategy: "audio_analyze",
 		},
 		Listen: ListenConfig{
 			TextInHttp:        "0.0.0.0:51080",

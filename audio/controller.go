@@ -1,4 +1,4 @@
-package main
+package audio
 
 import (
 	"context"
@@ -6,12 +6,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/cdfmlr/ellipsis"
 	"muvtuberdriver/pkg/wsforwarder"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cdfmlr/ellipsis"
 
 	"golang.org/x/exp/slog"
 	"golang.org/x/net/websocket"
@@ -19,7 +20,7 @@ import (
 
 const CleanReportAfter = 5 * time.Minute
 
-type AudioController interface {
+type Controller interface {
 	AudioToTrack(format string, audio []byte) *Track
 
 	PlayBgm(track *Track) error
@@ -40,10 +41,10 @@ type AudioController interface {
 	// 	// wait for the audioview finishing playing the track
 	// 	_ := c.Wait(ctx, ReportEnd(track.ID))
 	Wait(ctx context.Context, report *Report) error
-}
 
-// this file implement the audio controller for the audioview,
-// that is, a websocket server that sends audio to the audioview.
+	// Reset the audioview
+	Reset() error
+}
 
 type audioController struct {
 	forwarder wsforwarder.Forwarder
@@ -52,7 +53,7 @@ type audioController struct {
 	cleaningReports sync.Mutex
 }
 
-func NewAudioController() AudioController {
+func NewController() Controller {
 	return &audioController{
 		forwarder: wsforwarder.NewMessageForwarder(),
 	}
@@ -86,6 +87,14 @@ func (c *audioController) PlayBgm(track *Track) error {
 	return c.sendPlayCmd(CmdPlayBgm, track)
 }
 
+// Reset the audioview: send a ResetCmd to ask audioview
+// refesh it's web page nad reconnect the websocket.
+//
+// TODO: reset the controller itself too.
+func (c *audioController) Reset() error {
+	return c.sendResetCmd()
+}
+
 // AudioToTrack converts the audio to a Track object.
 // The audio content is encoded in base64 and put into the src field
 // in data url format:
@@ -96,6 +105,16 @@ func (c *audioController) PlayBgm(track *Track) error {
 //
 // TODO: sayer += ID & let audioController reuse it to identify the track
 func (c *audioController) AudioToTrack(format string, audio []byte) *Track {
+	audioHash := md5.Sum(audio)
+
+	return &Track{
+		ID:     fmt.Sprintf("%x", audioHash),
+		Src:    Base64EncodeAudio(format, audio),
+		Format: format,
+	}
+}
+
+func Base64EncodeAudio(format string, audio []byte) string {
 	var dataurl strings.Builder
 	dataurl.WriteString("data:")
 	dataurl.WriteString(format)
@@ -104,18 +123,12 @@ func (c *audioController) AudioToTrack(format string, audio []byte) *Track {
 	base64Content := base64.StdEncoding.EncodeToString(audio)
 	dataurl.WriteString(base64Content)
 
-	audioHash := md5.Sum(audio)
-
-	return &Track{
-		ID:     fmt.Sprintf("%x", audioHash),
-		Src:    dataurl.String(),
-		Format: format,
-	}
+	return dataurl.String()
 }
 
 func (c *audioController) sendPlayCmd(cmd string, track *Track) error {
 	// construct the command
-	command := AudioMessage{
+	command := Message{
 		Cmd:  cmd,
 		Data: track,
 	}
@@ -127,6 +140,25 @@ func (c *audioController) sendPlayCmd(cmd string, track *Track) error {
 
 	slog.Info("[audioController] sendPlayCmd to audioview",
 		"cmd", cmd, "track", ellipsis.Ending(track.ID, 10))
+
+	// send the command
+	c.forwarder.SendMessage(j)
+
+	return nil
+}
+
+func (c *audioController) sendResetCmd() error {
+	// construct the command
+	command := Message{
+		Cmd: CmdReset,
+	}
+
+	j, err := json.Marshal(command)
+	if err != nil {
+		return err
+	}
+
+	slog.Info("[audioController] sendResetCmd to audioview")
 
 	// send the command
 	c.forwarder.SendMessage(j)
@@ -153,7 +185,7 @@ func (c *audioController) Wait(ctx context.Context, report *Report) error {
 // Blocks until the connection is closed.
 func (c *audioController) recv(conn *websocket.Conn) {
 	for {
-		var msg AudioMessage
+		var msg Message
 		err := websocket.JSON.Receive(conn, &msg)
 		if err != nil {
 			slog.Warn("[audioController] recv: receive msg failed", "err", err)
@@ -163,6 +195,7 @@ func (c *audioController) recv(conn *websocket.Conn) {
 		switch msg.Cmd {
 		case "keepAlive":
 			// do nothing
+			// slog.Info("[audioController] recv keepAlive from audioview")
 		case "report":
 			c.handleReport(&msg)
 		default:
@@ -173,7 +206,7 @@ func (c *audioController) recv(conn *websocket.Conn) {
 	}
 }
 
-func (c *audioController) handleReport(msg *AudioMessage) {
+func (c *audioController) handleReport(msg *Message) {
 	// save the report
 	if msg.Data == nil {
 		slog.Warn("[audioController] recv report failed: data is nil")
@@ -193,7 +226,7 @@ func (c *audioController) handleReport(msg *AudioMessage) {
 		slog.Warn("[audioController] recv report failed: ID is empty")
 		return
 	}
-	if report.Status != AudioPlayStatusStart && report.Status != AudioPlayStatusEnd {
+	if report.Status != PlayStatusStart && report.Status != PlayStatusEnd {
 		slog.Error("report status is not start or end", "status", report.Status)
 		return
 	}
@@ -239,71 +272,3 @@ func (c *audioController) cleanUnusedReports() {
 	// until the lock is released.
 	time.Sleep(CleanReportAfter)
 }
-
-// AudioMessage is the command msg sent to the audioview.
-type AudioMessage struct {
-	Cmd  string `json:"cmd"`
-	Data any    `json:"data"` // Track | Report
-}
-
-// Track is a audio playing task.
-// It should be named AudioTask, but I'm too lazy to change it.
-type Track struct {
-	ID       string  `json:"id"` // used to identify the track & report progress (start, end, etc.)
-	Src      string  `json:"src"`
-	Format   string  `json:"format,omitempty"`
-	Volume   float64 `json:"volume,omitempty"`
-	PlayMode string  `json:"playMode,omitempty"` // PlayMode should be named PlayAt, it's indicating when to play the track
-}
-
-// Report is the report msg sent from the audioview.
-type Report struct {
-	ID     string          `json:"id"`     // the ID of the track
-	Status AudioPlayStatus `json:"status"` // the status of the track: start | end
-}
-
-func ReportStart(id string) *Report {
-	return &Report{
-		ID:     id,
-		Status: AudioPlayStatusStart,
-	}
-}
-
-func ReportEnd(id string) *Report {
-	return &Report{
-		ID:     id,
-		Status: AudioPlayStatusEnd,
-	}
-}
-
-func (r *Report) String() string {
-	return fmt.Sprintf("Report(%s: %s)", r.ID, r.Status)
-}
-
-type AudioPlayAt string
-
-// PlayModes
-const (
-	PlayAtNext      AudioPlayAt = "next"
-	PlayAtNow       AudioPlayAt = "now"
-	PlayAtResetNext AudioPlayAt = "resetNext"
-	PlayAtResetNow  AudioPlayAt = "resetNow"
-)
-
-// cmds
-const (
-	CmdPlayBgm   = "playBgm"
-	CmdPlayFx    = "playFx"
-	CmdPlaySing  = "playSing"
-	CmdPlayVocal = "playVocal"
-)
-
-// AudioPlayStatus: StatusStart | StatusEnd
-type AudioPlayStatus string
-
-// status from report
-const (
-	AudioPlayStatusStart AudioPlayStatus = "start"
-	AudioPlayStatusEnd   AudioPlayStatus = "end"
-	AudioPlayStatusErr   AudioPlayStatus = "err"
-)
